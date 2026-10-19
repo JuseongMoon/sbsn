@@ -26,7 +26,7 @@ struct ShootingModeView: View {
                     .font(.system(size: 52, weight: .semibold).monospacedDigit())
                     .contentTransition(.numericText())
 
-                Text("서버 저장 \(model.uploadedCount)장")
+                Text("미리보기 \(model.previewUploadedCount) · 원본 \(model.originalUploadedCount)")
                     .font(.title3.monospacedDigit())
                     .contentTransition(.numericText())
 

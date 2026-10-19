@@ -44,7 +44,7 @@ struct CameraTransferTestView: View {
                 Text("보안 프로토콜은 끄고, 패시브 모드 항목이 있으면 켜 주세요.")
             }
 
-            Section("받은 사진 \(model.photos.count)장 · 서버 저장 \(model.uploadedCount)장") {
+            Section("받은 \(model.photos.count) · 미리보기 \(model.previewUploadedCount) · 원본 \(model.originalUploadedCount)") {
                 if model.failedUploadCount > 0 {
                     Button("업로드 실패 \(model.failedUploadCount)장 다시 올리기", systemImage: "arrow.clockwise.icloud") {
                         model.retryFailedUploads()
@@ -131,22 +131,35 @@ private struct ReceivedPhotoRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                switch photo.upload {
-                case .uploading:
-                    Label("서버 업로드 중", systemImage: "arrow.up.circle")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                case .uploaded(let duration):
-                    Label("서버 저장 \(duration, format: .number.precision(.fractionLength(1)))초", systemImage: "checkmark.icloud")
-                        .font(.caption)
-                        .foregroundStyle(.green)
-                case .failed(let message):
-                    Label("업로드 실패: \(message)", systemImage: "exclamationmark.icloud")
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                }
+                UploadStateLabel(title: "미리보기", state: photo.preview)
+                UploadStateLabel(title: "원본", state: photo.original)
             }
         }
+    }
+}
+
+private struct UploadStateLabel: View {
+    let title: String
+    let state: CameraTransferTestModel.ReceivedPhoto.UploadState
+
+    var body: some View {
+        Group {
+            switch state {
+            case .waiting:
+                Label("\(title) 대기", systemImage: "clock")
+                    .foregroundStyle(.secondary)
+            case .uploading:
+                Label("\(title) 업로드 중", systemImage: "arrow.up.circle")
+                    .foregroundStyle(.secondary)
+            case .uploaded(let duration):
+                Label("\(title) 저장 \(duration, format: .number.precision(.fractionLength(1)))초", systemImage: "checkmark.icloud")
+                    .foregroundStyle(.green)
+            case .failed(let message):
+                Label("\(title) 실패: \(message)", systemImage: "exclamationmark.icloud")
+                    .foregroundStyle(.red)
+            }
+        }
+        .font(.caption)
     }
 }
 

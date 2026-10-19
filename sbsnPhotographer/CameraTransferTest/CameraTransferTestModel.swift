@@ -16,14 +16,26 @@ import UIKit
 ///
 /// 받은 파일은 임시 촬영 티켓 폴더(`Application Support/Tickets/<티켓 ID>/originals`)에 모으고,
 /// 같은 티켓 폴더에 FTP 로그(`session-log.txt`), 수신 기록(`received.csv`), 업로드 기록(`uploads.csv`)을 남긴다.
-/// 받은 사진은 곧바로 서버의 같은 촬영 티켓 아래로 올린다.
+///
+/// 업로드 순서: 사진을 받으면 미리보기(긴 변 2048px, 수백 KB)를 바로 만들어 올리고, 원본(약 20MB)은
+/// 대기열에 넣어 한 장씩 올린다. LTE 업로드에서 원본은 장당 수십 초가 걸리므로, 원본끼리 동시에 올려
+/// 미리보기 대역폭을 빼앗지 않게 하려는 것이다.
 @Observable
 final class CameraTransferTestModel {
     nonisolated struct ReceivedPhoto: Identifiable, Sendable {
         enum UploadState: Sendable {
+            case waiting
             case uploading
             case uploaded(duration: TimeInterval)
             case failed(String)
+
+            var isUploaded: Bool {
+                if case .uploaded = self { true } else { false }
+            }
+
+            var isFailed: Bool {
+                if case .failed = self { true } else { false }
+            }
         }
 
         let id = UUID()
@@ -34,15 +46,8 @@ final class CameraTransferTestModel {
         let receivedAt: Date
         let capturedAt: Date?
         let thumbnail: UIImage?
-        var upload: UploadState = .uploading
-
-        var isUploaded: Bool {
-            if case .uploaded = upload { true } else { false }
-        }
-
-        var isUploadFailed: Bool {
-            if case .failed = upload { true } else { false }
-        }
+        var preview: UploadState = .waiting
+        var original: UploadState = .waiting
 
         /// 카메라 시계 기준 촬영 시각부터 앱 수신 완료까지 걸린 시간. 카메라 시계가 틀린 만큼 어긋난다.
         var shotToReceiveLatency: TimeInterval? { capturedAt.map { receivedAt.timeIntervalSince($0) } }
@@ -78,12 +83,15 @@ final class CameraTransferTestModel {
     /// 촬영 모드: 화면 자동 잠금을 막고 근접 센서를 켠다. 주머니에 넣으면 화면만 꺼지고 앱은 화면 앞 상태로 남아 전송이 계속된다.
     private(set) var isShootingMode = false
 
-    var uploadedCount: Int { photos.filter(\.isUploaded).count }
-    var failedUploadCount: Int { photos.filter(\.isUploadFailed).count }
+    var previewUploadedCount: Int { photos.filter(\.preview.isUploaded).count }
+    var originalUploadedCount: Int { photos.filter(\.original.isUploaded).count }
+    var failedUploadCount: Int { photos.filter { $0.preview.isFailed || $0.original.isFailed }.count }
 
     private var server: FTPServer?
     private var isSuspendedForBackground = false
     private let uploader: TicketPhotoUploader
+    private var originalQueue: [UUID] = []
+    private var isUploadingOriginal = false
     private var nextLogID = 0
     private var brightnessBeforeShooting: CGFloat?
 
@@ -210,40 +218,94 @@ final class CameraTransferTestModel {
             photo.shotToReceiveLatency.map { String(format: "%.3f", $0) } ?? "",
         ]
         appendToFile(named: "received.csv", line: fields.joined(separator: ","))
-        startUpload(photo)
+        uploadPreview(of: photo)
     }
 
-    private func startUpload(_ photo: ReceivedPhoto) {
-        appendLog("upload started: \(photo.relativePath)")
+    /// 미리보기를 만들어 바로 올린다. 성공 여부와 상관없이 끝나면 원본을 대기열에 넣는다.
+    private func uploadPreview(of photo: ReceivedPhoto) {
+        updatePhoto(photo.id) { $0.preview = .uploading }
+        let sourceURL = photo.fileURL
+        let fileName = sourceURL.lastPathComponent
+        let previewURL = ticketDirectory
+            .appending(path: "previews", directoryHint: .isDirectory)
+            .appending(path: fileName + ".jpg")
+        Task {
+            let renderStartedAt = Date()
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    try PhotoPreviewRenderer.renderJPEG(from: sourceURL, to: previewURL)
+                }.value
+                let renderDuration = Date().timeIntervalSince(renderStartedAt)
+                let upload = try await uploader.uploadPreview(fileAt: previewURL, originalFileName: fileName, capturedAt: photo.capturedAt)
+                updatePhoto(photo.id) { $0.preview = .uploaded(duration: upload.duration) }
+                recordUpload(kind: "preview", photo: photo, upload: upload, renderDuration: renderDuration)
+            } catch {
+                updatePhoto(photo.id) { $0.preview = .failed(error.localizedDescription) }
+                appendLog("preview failed: \(fileName): \(error)")
+            }
+            enqueueOriginalIfNeeded(photo.id)
+        }
+    }
+
+    private func enqueueOriginalIfNeeded(_ id: UUID) {
+        guard let photo = photos.first(where: { $0.id == id }),
+              case .waiting = photo.original,
+              !originalQueue.contains(id)
+        else { return }
+        originalQueue.append(id)
+        uploadNextOriginal()
+    }
+
+    /// 원본은 한 번에 한 장만 올린다.
+    private func uploadNextOriginal() {
+        guard !isUploadingOriginal, !originalQueue.isEmpty else { return }
+        let id = originalQueue.removeFirst()
+        guard let photo = photos.first(where: { $0.id == id }) else { return uploadNextOriginal() }
+        isUploadingOriginal = true
+        updatePhoto(id) { $0.original = .uploading }
         Task {
             do {
-                let upload = try await uploader.upload(fileAt: photo.fileURL, capturedAt: photo.capturedAt)
-                setUploadState(.uploaded(duration: upload.duration), for: photo.id)
-                let receivedToStored = Date().timeIntervalSince(photo.receivedAt)
-                appendLog("uploaded \(upload.storagePath) (\(String(format: "%.2f", upload.duration))s)")
-                appendToFile(named: "uploads.csv", line: [
-                    photo.relativePath,
-                    String(upload.byteCount),
-                    String(format: "%.3f", upload.duration),
-                    String(format: "%.3f", receivedToStored),
-                ].joined(separator: ","))
+                let upload = try await uploader.uploadOriginal(fileAt: photo.fileURL)
+                updatePhoto(id) { $0.original = .uploaded(duration: upload.duration) }
+                recordUpload(kind: "original", photo: photo, upload: upload, renderDuration: nil)
             } catch {
-                setUploadState(.failed(error.localizedDescription), for: photo.id)
-                appendLog("upload failed: \(photo.relativePath): \(error)")
+                updatePhoto(id) { $0.original = .failed(error.localizedDescription) }
+                appendLog("original failed: \(photo.relativePath): \(error)")
             }
+            isUploadingOriginal = false
+            uploadNextOriginal()
         }
     }
 
     func retryFailedUploads() {
-        for photo in photos where photo.isUploadFailed {
-            setUploadState(.uploading, for: photo.id)
-            startUpload(photo)
+        for photo in photos {
+            if photo.preview.isFailed {
+                uploadPreview(of: photo)
+            }
+            if photo.original.isFailed {
+                updatePhoto(photo.id) { $0.original = .waiting }
+                enqueueOriginalIfNeeded(photo.id)
+            }
         }
     }
 
-    private func setUploadState(_ state: ReceivedPhoto.UploadState, for id: UUID) {
+    private func recordUpload(kind: String, photo: ReceivedPhoto, upload: TicketPhotoUploader.Upload, renderDuration: TimeInterval?) {
+        let receivedToStored = Date().timeIntervalSince(photo.receivedAt)
+        appendLog("\(kind) stored: \(upload.storagePath) (\(upload.byteCount / 1000)KB, \(String(format: "%.2f", upload.duration))s)")
+        // 종류, 파일, 바이트, 업로드 초, 앱 수신부터 서버 저장까지 초, 미리보기 생성 초
+        appendToFile(named: "uploads.csv", line: [
+            kind,
+            photo.relativePath,
+            String(upload.byteCount),
+            String(format: "%.3f", upload.duration),
+            String(format: "%.3f", receivedToStored),
+            renderDuration.map { String(format: "%.3f", $0) } ?? "",
+        ].joined(separator: ","))
+    }
+
+    private func updatePhoto(_ id: UUID, _ change: (inout ReceivedPhoto) -> Void) {
         guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
-        photos[index].upload = state
+        change(&photos[index])
     }
 
     private func appendToFile(named name: String, line: String) {
