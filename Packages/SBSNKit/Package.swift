@@ -20,6 +20,13 @@ let package = Package(
             name: "SBSNCameraTransfer",
             targets: ["SBSNCameraTransfer"]
         ),
+        .library(
+            name: "SBSNBackend",
+            targets: ["SBSNBackend"]
+        ),
+    ],
+    dependencies: [
+        .package(url: "https://github.com/firebase/firebase-ios-sdk", from: "13.0.0"),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
@@ -39,6 +46,20 @@ let package = Package(
         ),
         .target(
             name: "SBSNCameraTransfer",
+            swiftSettings: [
+                .enableUpcomingFeature("ApproachableConcurrency"),
+            ],
+        ),
+        // Firebase는 이 모듈 안에서만 다룬다. 앱과 SBSNCore는 Firebase 타입을 직접 쓰지 않는다.
+        .target(
+            name: "SBSNBackend",
+            dependencies: [
+                "SBSNCore",
+                .product(name: "FirebaseCore", package: "firebase-ios-sdk"),
+                .product(name: "FirebaseAuth", package: "firebase-ios-sdk"),
+                .product(name: "FirebaseFirestore", package: "firebase-ios-sdk"),
+                .product(name: "FirebaseStorage", package: "firebase-ios-sdk"),
+            ],
             swiftSettings: [
                 .enableUpcomingFeature("ApproachableConcurrency"),
             ],

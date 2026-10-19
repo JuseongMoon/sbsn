@@ -1,0 +1,19 @@
+rules_version = '2';
+
+// 실증 단계 규칙: 촬영 티켓 원본은 Firestore 티켓 문서의 작가만 올리고 읽는다.
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isTicketPhotographer(ticketId) {
+      return request.auth != null
+        && firestore.get(/databases/(default)/documents/tickets/$(ticketId)).data.photographerUid == request.auth.uid;
+    }
+
+    match /tickets/{ticketId}/originals/{fileName} {
+      allow read: if isTicketPhotographer(ticketId);
+      allow create, update: if isTicketPhotographer(ticketId)
+        && request.resource.size < 200 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/octet-stream');
+      allow delete: if false;
+    }
+  }
+}

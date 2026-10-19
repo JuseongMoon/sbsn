@@ -44,7 +44,12 @@ struct CameraTransferTestView: View {
                 Text("보안 프로토콜은 끄고, 패시브 모드 항목이 있으면 켜 주세요.")
             }
 
-            Section("받은 사진 \(model.photos.count)장") {
+            Section("받은 사진 \(model.photos.count)장 · 서버 저장 \(model.uploadedCount)장") {
+                if model.failedUploadCount > 0 {
+                    Button("업로드 실패 \(model.failedUploadCount)장 다시 올리기", systemImage: "arrow.clockwise.icloud") {
+                        model.retryFailedUploads()
+                    }
+                }
                 ForEach(model.photos.reversed()) { photo in
                     ReceivedPhotoRow(photo: photo)
                 }
@@ -72,6 +77,14 @@ struct CameraTransferTestView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             model.note("scenePhase: \(phase)")
+            switch phase {
+            case .background:
+                model.suspendForBackground()
+            case .active:
+                model.resumeFromBackground()
+            default:
+                break
+            }
         }
         .fullScreenCover(isPresented: Binding(
             get: { model.isShootingMode },
@@ -117,6 +130,20 @@ private struct ReceivedPhotoRow: View {
                     Text("촬영 → 수신 \(latency, format: .number.precision(.fractionLength(1)))초")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+                switch photo.upload {
+                case .uploading:
+                    Label("서버 업로드 중", systemImage: "arrow.up.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                case .uploaded(let duration):
+                    Label("서버 저장 \(duration, format: .number.precision(.fractionLength(1)))초", systemImage: "checkmark.icloud")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                case .failed(let message):
+                    Label("업로드 실패: \(message)", systemImage: "exclamationmark.icloud")
+                        .font(.caption)
+                        .foregroundStyle(.red)
                 }
             }
         }

@@ -26,6 +26,10 @@ struct ShootingModeView: View {
                     .font(.system(size: 52, weight: .semibold).monospacedDigit())
                     .contentTransition(.numericText())
 
+                Text("서버 저장 \(model.uploadedCount)장")
+                    .font(.title3.monospacedDigit())
+                    .contentTransition(.numericText())
+
                 if let last = model.photos.last {
                     VStack(spacing: 4) {
                         Text(last.relativePath)

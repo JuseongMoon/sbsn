@@ -10,6 +10,7 @@
 		B96744BC91BB4BD9891AD49D /* SBSNCore in Frameworks */ = {isa = PBXBuildFile; productRef = AAC0B723C88D4C759850EDD8 /* SBSNCore */; };
 		F5EF008A3D5748DAABF2F06C /* SBSNCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4B8375695FE0427F8FECFF82 /* SBSNCore */; };
 		0485E21D287747EB9FA9B58E /* SBSNCameraTransfer in Frameworks */ = {isa = PBXBuildFile; productRef = 2634ABF59FDF4D4FA6CDE5E7 /* SBSNCameraTransfer */; };
+		233EE9898AAE4580AED2B2F5 /* SBSNBackend in Frameworks */ = {isa = PBXBuildFile; productRef = AF37E492F4274C58833287EF /* SBSNBackend */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -88,6 +89,7 @@
 			files = (
 				F5EF008A3D5748DAABF2F06C /* SBSNCore in Frameworks */,
 				0485E21D287747EB9FA9B58E /* SBSNCameraTransfer in Frameworks */,
+				233EE9898AAE4580AED2B2F5 /* SBSNBackend in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -207,6 +209,7 @@
 			packageProductDependencies = (
 				4B8375695FE0427F8FECFF82 /* SBSNCore */,
 				2634ABF59FDF4D4FA6CDE5E7 /* SBSNCameraTransfer */,
+				AF37E492F4274C58833287EF /* SBSNBackend */,
 			);
 			productName = sbsnPhotographer;
 			productReference = 015F59EAE9DE49E3B3456F5F /* sbsnPhotographer.app */;
@@ -747,6 +750,10 @@
 		2634ABF59FDF4D4FA6CDE5E7 /* SBSNCameraTransfer */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = SBSNCameraTransfer;
+		};
+		AF37E492F4274C58833287EF /* SBSNBackend */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SBSNBackend;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

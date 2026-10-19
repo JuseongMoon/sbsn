@@ -8,23 +8,41 @@
 import Foundation
 import ImageIO
 import Observation
+import SBSNBackend
 import SBSNCameraTransfer
 import UIKit
 
 /// 카메라의 FTP 자동 전송을 실기기에서 검증하는 화면의 모델.
 ///
 /// 받은 파일은 임시 촬영 티켓 폴더(`Application Support/Tickets/<티켓 ID>/originals`)에 모으고,
-/// 같은 티켓 폴더에 FTP 로그(`session-log.txt`)와 수신 기록(`received.csv`)을 남긴다.
+/// 같은 티켓 폴더에 FTP 로그(`session-log.txt`), 수신 기록(`received.csv`), 업로드 기록(`uploads.csv`)을 남긴다.
+/// 받은 사진은 곧바로 서버의 같은 촬영 티켓 아래로 올린다.
 @Observable
 final class CameraTransferTestModel {
     nonisolated struct ReceivedPhoto: Identifiable, Sendable {
+        enum UploadState: Sendable {
+            case uploading
+            case uploaded(duration: TimeInterval)
+            case failed(String)
+        }
+
         let id = UUID()
+        let fileURL: URL
         let relativePath: String
         let byteCount: Int
         let transferDuration: TimeInterval
         let receivedAt: Date
         let capturedAt: Date?
         let thumbnail: UIImage?
+        var upload: UploadState = .uploading
+
+        var isUploaded: Bool {
+            if case .uploaded = upload { true } else { false }
+        }
+
+        var isUploadFailed: Bool {
+            if case .failed = upload { true } else { false }
+        }
 
         /// 카메라 시계 기준 촬영 시각부터 앱 수신 완료까지 걸린 시간. 카메라 시계가 틀린 만큼 어긋난다.
         var shotToReceiveLatency: TimeInterval? { capturedAt.map { receivedAt.timeIntervalSince($0) } }
@@ -60,7 +78,12 @@ final class CameraTransferTestModel {
     /// 촬영 모드: 화면 자동 잠금을 막고 근접 센서를 켠다. 주머니에 넣으면 화면만 꺼지고 앱은 화면 앞 상태로 남아 전송이 계속된다.
     private(set) var isShootingMode = false
 
+    var uploadedCount: Int { photos.filter(\.isUploaded).count }
+    var failedUploadCount: Int { photos.filter(\.isUploadFailed).count }
+
     private var server: FTPServer?
+    private var isSuspendedForBackground = false
+    private let uploader: TicketPhotoUploader
     private var nextLogID = 0
     private var brightnessBeforeShooting: CGFloat?
 
@@ -72,6 +95,7 @@ final class CameraTransferTestModel {
         ticketDirectory = URL.applicationSupportDirectory
             .appending(path: "Tickets", directoryHint: .isDirectory)
             .appending(path: ticketID, directoryHint: .isDirectory)
+        uploader = TicketPhotoUploader(ticketID: ticketID)
     }
 
     func start() {
@@ -104,6 +128,25 @@ final class CameraTransferTestModel {
         isRunning = false
         keepsScreenAwake = false
         appendLog("server stopped")
+    }
+
+    /// iOS는 백그라운드에 있는 앱의 수신 대기 소켓을 회수할 수 있다. 실기기에서 12분 백그라운드 뒤 서버가
+    /// "수신 대기 중"으로 보이면서도 카메라 접속을 받지 못했다. 그래서 백그라운드로 갈 때 서버를 닫고,
+    /// 다시 앞으로 오면 같은 촬영 티켓으로 새로 연다. 카메라는 다시 붙으면 못 보낸 사진을 자동으로 보낸다.
+    func suspendForBackground() {
+        guard server != nil else { return }
+        server?.stop()
+        server = nil
+        isRunning = false
+        isSuspendedForBackground = true
+        appendLog("server suspended: app in background")
+    }
+
+    func resumeFromBackground() {
+        guard isSuspendedForBackground else { return }
+        isSuspendedForBackground = false
+        appendLog("server resuming: app active")
+        start()
     }
 
     func enterShootingMode() {
@@ -167,6 +210,40 @@ final class CameraTransferTestModel {
             photo.shotToReceiveLatency.map { String(format: "%.3f", $0) } ?? "",
         ]
         appendToFile(named: "received.csv", line: fields.joined(separator: ","))
+        startUpload(photo)
+    }
+
+    private func startUpload(_ photo: ReceivedPhoto) {
+        appendLog("upload started: \(photo.relativePath)")
+        Task {
+            do {
+                let upload = try await uploader.upload(fileAt: photo.fileURL, capturedAt: photo.capturedAt)
+                setUploadState(.uploaded(duration: upload.duration), for: photo.id)
+                let receivedToStored = Date().timeIntervalSince(photo.receivedAt)
+                appendLog("uploaded \(upload.storagePath) (\(String(format: "%.2f", upload.duration))s)")
+                appendToFile(named: "uploads.csv", line: [
+                    photo.relativePath,
+                    String(upload.byteCount),
+                    String(format: "%.3f", upload.duration),
+                    String(format: "%.3f", receivedToStored),
+                ].joined(separator: ","))
+            } catch {
+                setUploadState(.failed(error.localizedDescription), for: photo.id)
+                appendLog("upload failed: \(photo.relativePath): \(error)")
+            }
+        }
+    }
+
+    func retryFailedUploads() {
+        for photo in photos where photo.isUploadFailed {
+            setUploadState(.uploading, for: photo.id)
+            startUpload(photo)
+        }
+    }
+
+    private func setUploadState(_ state: ReceivedPhoto.UploadState, for id: UUID) {
+        guard let index = photos.firstIndex(where: { $0.id == id }) else { return }
+        photos[index].upload = state
     }
 
     private func appendToFile(named name: String, line: String) {
@@ -212,6 +289,7 @@ final class CameraTransferTestModel {
         let rootComponents = root.standardizedFileURL.pathComponents
         let relative = file.url.standardizedFileURL.pathComponents.dropFirst(rootComponents.count).joined(separator: "/")
         return ReceivedPhoto(
+            fileURL: file.url,
             relativePath: relative.isEmpty ? file.url.lastPathComponent : relative,
             byteCount: file.byteCount,
             transferDuration: file.duration,

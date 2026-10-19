@@ -8,3 +8,6 @@ DerivedData/
 
 # macOS
 .DS_Store
+
+# Firebase 앱 설정. 공개 저장소이므로 커밋하지 않고 각자 내려받는다.
+GoogleService-Info.plist

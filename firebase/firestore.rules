@@ -1,0 +1,30 @@
+rules_version = '2';
+
+// 실증 단계 규칙: 촬영 티켓을 만든 작가만 자기 티켓과 사진 목록을 읽고 쓴다.
+// 고객 접근과 티켓 상태 전이 검증은 티켓 모델을 확정한 뒤 추가한다.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isTicketPhotographer(ticketId) {
+      return isSignedIn()
+        && get(/databases/$(database)/documents/tickets/$(ticketId)).data.photographerUid == request.auth.uid;
+    }
+
+    match /tickets/{ticketId} {
+      allow read: if isSignedIn() && resource.data.photographerUid == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.photographerUid == request.auth.uid;
+      allow update: if isSignedIn()
+        && resource.data.photographerUid == request.auth.uid
+        && request.resource.data.photographerUid == resource.data.photographerUid;
+      allow delete: if false;
+
+      match /photos/{photoId} {
+        allow read, create, update: if isTicketPhotographer(ticketId);
+        allow delete: if false;
+      }
+    }
+  }
+}

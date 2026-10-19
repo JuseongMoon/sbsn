@@ -1,0 +1,6 @@
+{
+  "projects": {
+    "default": "sbsn-dev",
+    "dev": "sbsn-dev"
+  }
+}
