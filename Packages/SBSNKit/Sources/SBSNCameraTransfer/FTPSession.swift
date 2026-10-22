@@ -43,10 +43,18 @@ final class FTPSession: @unchecked Sendable {
         control.start(queue: queue)
     }
 
+    /// 보내려고 쌓아 둔 응답을 모두 내보낸 뒤 제어 연결을 닫는다. 바로 cancel()하면 아직 안 나간 응답(QUIT의 221 등)이 버려진다.
     func close() {
+        guard !isControlClosed else { return }
         isControlClosed = true
         closeData()
-        control.cancel()
+        control.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { [control] _ in
+            control.cancel()
+        })
+        // 상대가 받지 않아 보내기가 끝나지 않더라도 연결이 남지 않게 한다.
+        queue.asyncAfter(deadline: .now() + 5) { [control] in
+            control.cancel()
+        }
     }
 
     // MARK: - Control channel

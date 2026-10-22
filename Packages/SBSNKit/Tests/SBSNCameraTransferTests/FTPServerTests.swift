@@ -76,6 +76,31 @@ struct FTPServerTests {
         server.stop()
     }
 
+    /// 연결을 닫을 때 쌓인 응답을 버리지 않아야 한다. QUIT의 221을 못 받으면 클라이언트(맥 ftplib)가 오류로 본다.
+    /// nc는 입력을 다 보내면 송신 쪽을 먼저 닫으므로(half-close), 그때도 앞선 명령의 응답이 모두 와야 한다.
+    @Test func repliesToQuitBeforeClosing() throws {
+        for _ in 0..<20 {
+            let output = try netcat("USER camera\r\nPASS sbsn\r\nQUIT\r\n")
+            #expect(output.contains("221 Bye"), "받은 응답: \(output)")
+        }
+        server.stop()
+    }
+
+    private func netcat(_ input: String) throws -> String {
+        let process = Process()
+        process.executableURL = URL(filePath: "/usr/bin/nc")
+        process.arguments = ["-w", "5", "127.0.0.1", String(port)]
+        let inputPipe = Pipe()
+        let outputPipe = Pipe()
+        process.standardInput = inputPipe
+        process.standardOutput = outputPipe
+        try process.run()
+        inputPipe.fileHandleForWriting.write(Data(input.utf8))
+        try inputPipe.fileHandleForWriting.close()
+        process.waitUntilExit()
+        return String(decoding: outputPipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    }
+
     private func curl(_ arguments: [String], password: String = "sbsn") throws -> (status: Int32, output: String) {
         let process = Process()
         process.executableURL = URL(filePath: "/usr/bin/curl")
