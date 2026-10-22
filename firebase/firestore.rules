@@ -21,8 +21,14 @@ service cloud.firestore {
         && request.resource.data.photographerUid == resource.data.photographerUid;
       allow delete: if false;
 
+      // 찜(favoritedAt)과 구매(purchasedAt)는 고객과 결제 서버가 쓴다. 작가 앱은 읽기만 하고 고칠 수 없다.
+      // 실증 단계에서는 관리자 스크립트(firebase/scripts/simulate_demand_dev.py)만 쓴다.
       match /photos/{photoId} {
-        allow read, create, update: if isTicketPhotographer(ticketId);
+        allow read: if isTicketPhotographer(ticketId);
+        allow create: if isTicketPhotographer(ticketId)
+          && !request.resource.data.keys().hasAny(['favoritedAt', 'purchasedAt']);
+        allow update: if isTicketPhotographer(ticketId)
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['favoritedAt', 'purchasedAt']);
         allow delete: if false;
       }
     }

@@ -10,6 +10,8 @@ import SwiftUI
 
 struct ContentView: View {
     private let role = AppRole.photographer
+    /// 맥에서 비교 측정을 자동으로 돌릴 때 실행 인자(-SBSNOpenTransferTest YES)로 실증 화면을 바로 연다.
+    @State private var opensTransferTest = UserDefaults.standard.bool(forKey: "SBSNOpenTransferTest")
 
     var body: some View {
         NavigationStack {
@@ -29,6 +31,9 @@ struct ContentView: View {
                 .buttonStyle(.borderedProminent)
             }
             .padding()
+            .navigationDestination(isPresented: $opensTransferTest) {
+                CameraTransferTestView()
+            }
         }
     }
 }

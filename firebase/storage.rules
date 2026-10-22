@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// 실증 단계 규칙: 촬영 티켓의 미리보기와 원본은 Firestore 티켓 문서의 작가만 올리고 읽는다.
+// 실증 단계 규칙: 촬영 티켓의 미리보기·고화질본·원본은 Firestore 티켓 문서의 작가만 올리고 읽는다.
 service firebase.storage {
   match /b/{bucket}/o {
     function isTicketPhotographer(ticketId) {
@@ -8,12 +8,23 @@ service firebase.storage {
         && firestore.get(/databases/(default)/documents/tickets/$(ticketId)).data.photographerUid == request.auth.uid;
     }
 
-    // 고객에게 먼저 보여 줄 미리보기(긴 변 2048px JPEG, 수백 KB).
+    // 고객에게 먼저 보여 줄 저화질·워터마크 미리보기(긴 변 1024px JPEG, 백수십 KB).
+    // 장당 구매라 쓸 만한 화질이 미리 나가지 않도록 크기를 1MB 미만으로 묶는다.
     match /tickets/{ticketId}/previews/{fileName} {
       allow read: if isTicketPhotographer(ticketId);
       allow create, update: if isTicketPhotographer(ticketId)
-        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.size < 1024 * 1024
         && request.resource.contentType == 'image/jpeg';
+      allow delete: if false;
+    }
+
+    // 구매하면 넘기는 원해상도 고화질본(HEIC, 장당 약 6MB). 미리 올려 두되 구매 전 고객은 읽지 못한다.
+    // 고객 읽기(구매한 사진만)는 고객 인증과 구매 기록을 만든 뒤 추가한다.
+    match /tickets/{ticketId}/fullres/{fileName} {
+      allow read: if isTicketPhotographer(ticketId);
+      allow create, update: if isTicketPhotographer(ticketId)
+        && request.resource.size < 50 * 1024 * 1024
+        && request.resource.contentType == 'image/heic';
       allow delete: if false;
     }
 
