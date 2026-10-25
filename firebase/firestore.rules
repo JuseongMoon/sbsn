@@ -32,5 +32,16 @@ service cloud.firestore {
         allow delete: if false;
       }
     }
+
+    // 작가 기기의 푸시 토큰. 고객이 사진을 사면 서버 함수(firebase/functions)가 이 토큰으로 작가 앱을 깨운다.
+    // 작가 본인만 읽고 쓰며, 토큰과 갱신 시각 말고는 쓰지 못한다.
+    match /photographers/{uid} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow create, update: if isSignedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['fcmToken', 'fcmTokenUpdatedAt'])
+        && request.resource.data.fcmToken is string
+        && request.resource.data.fcmToken.size() < 4096;
+      allow delete: if false;
+    }
   }
 }

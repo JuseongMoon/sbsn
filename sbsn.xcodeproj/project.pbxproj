@@ -37,6 +37,16 @@
 		015F59EAE9DE49E3B3456F5F /* sbsnPhotographer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = sbsnPhotographer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		7A1C5E0B2F4D4B8E9C3A6D21 /* Exceptions for "sbsnPhotographer" folder in "sbsnPhotographer" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 4DE2C2E193D34176893EB4F1 /* sbsnPhotographer */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		63C3FD0D304FF8F2007DD7B7 /* sbsn */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -55,6 +65,9 @@
 		};
 		380F4DC26C5B4307BDDE48C6 /* sbsnPhotographer */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				7A1C5E0B2F4D4B8E9C3A6D21 /* Exceptions for "sbsnPhotographer" folder in "sbsnPhotographer" target */,
+			);
 			path = sbsnPhotographer;
 			sourceTree = "<group>";
 		};
@@ -618,11 +631,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = sbsnPhotographer/sbsnPhotographer.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = LRMVZ8GHUX;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = sbsnPhotographer/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "십분스냅 작가";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "카메라에서 촬영한 사진을 같은 네트워크로 받기 위해 로컬 네트워크에 접근합니다.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -652,11 +667,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = sbsnPhotographer/sbsnPhotographer.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = LRMVZ8GHUX;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = sbsnPhotographer/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "십분스냅 작가";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "카메라에서 촬영한 사진을 같은 네트워크로 받기 위해 로컬 네트워크에 접근합니다.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

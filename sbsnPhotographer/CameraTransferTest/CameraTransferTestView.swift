@@ -55,10 +55,11 @@ struct CameraTransferTestView: View {
                 }
                 Toggle("구매 원본을 셀룰러로도 올리기", isOn: $model.uploadsOriginalsOnCellular)
                 LabeledContent("인터넷", value: model.isOnExpensiveNetwork ? "셀룰러(원본 보류)" : "와이파이")
+                LabeledContent("구매 알림", value: pushStatus)
             } header: {
                 Text("전달 순서")
             } footer: {
-                Text("구매 고화질본 → 찜 고화질본 → 구매 원본 → 나머지 고화질본 순서로 올립니다. 마지막 사진을 받고 정한 시간이 지나면 찜·구매하지 않은 사진은 올리지 않습니다.")
+                Text("구매 고화질본 → 찜 고화질본 → 구매 원본 → 나머지 고화질본 순서로 올립니다. 마지막 사진을 받고 정한 시간이 지나면 찜·구매하지 않은 사진은 올리지 않습니다. 앱이 백그라운드에 있을 때 들어온 구매는 구매 알림으로 앱을 깨워 올립니다.")
             }
 
             Section {
@@ -80,7 +81,7 @@ struct CameraTransferTestView: View {
             } header: {
                 Text("업로드 측정")
             } footer: {
-                Text("자동: 화면에 있을 때 putData, 백그라운드에서 시작하는 업로드는 putFile. 바꾼 값은 다음에 시작하는 업로드부터 적용됩니다. 처리량은 고화질본·원본을 올리고 있던 시간만으로 계산합니다.")
+                Text("자동: 화면에 있을 때 putData, 백그라운드에서 시작하는 업로드는 putFile. 방식과 관계없이 백그라운드에서 시작하는 구매 고화질본은 putData로 보냅니다. 바꾼 값은 다음에 시작하는 업로드부터 적용됩니다. 처리량은 고화질본·원본을 올리고 있던 시간만으로 계산합니다.")
             }
 
             Section("받은 \(model.photos.count) · 미리보기 \(model.previewUploadedCount) · 고화질 \(model.fullResolutionUploadedCount) · 원본 \(model.originalUploadedCount)") {
@@ -139,6 +140,16 @@ struct CameraTransferTestView: View {
                 model.stop()
             }
         }
+    }
+
+    private var pushStatus: String {
+        let router = PurchaseWakeRouter.shared
+        let registration = switch router.registration {
+        case .pending: "등록 중"
+        case .registered: "등록됨"
+        case .failed(let message): "등록 실패: \(message)"
+        }
+        return router.isAlertAuthorized == false ? "\(registration) · 배너 꺼짐" : registration
     }
 }
 

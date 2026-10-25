@@ -10,6 +10,8 @@ import SwiftUI
 
 @main
 struct sbsnPhotographerApp: App {
+    @UIApplicationDelegateAdaptor(PhotographerAppDelegate.self) private var appDelegate
+
     init() {
         Backend.configure()
     }

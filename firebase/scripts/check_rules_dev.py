@@ -114,6 +114,15 @@ expect("A가 구매 시각 바꾸기", fs_write(a, photo, {"purchasedAt": {"time
 expect("A가 찜 기록", fs_write(a, photo, {"favoritedAt": {"timestampValue": "2026-10-22T06:00:00Z"}}, merge=True), False)
 expect("A가 사진 문서를 덮어써 구매 기록 지우기", fs_write(a, photo, {"fileName": {"stringValue": "DSC00001.JPG"}}), False)
 
+# 작가 기기 푸시 토큰: 본인만 읽고 쓴다. 서버 함수가 이 토큰으로 구매 알림을 보낸다.
+device = {"fcmToken": {"stringValue": "rules-check-token"}, "fcmTokenUpdatedAt": {"timestampValue": "2026-10-24T00:00:00Z"}}
+expect("A가 자기 기기 토큰 등록", fs_write(a, f"photographers/{a_uid}", device), True)
+expect("A가 자기 기기 토큰 읽기", fs_read(a, f"photographers/{a_uid}"), True)
+expect("B가 A의 기기 토큰 읽기", fs_read(b, f"photographers/{a_uid}"), False)
+expect("B가 A의 기기 토큰 바꾸기", fs_write(b, f"photographers/{a_uid}", device), False)
+expect("A가 기기 문서에 다른 항목 쓰기", fs_write(a, f"photographers/{a_uid}", {**device, "role": {"stringValue": "admin"}}), False)
+expect("A가 문자열이 아닌 토큰 쓰기", fs_write(a, f"photographers/{a_uid}", {"fcmToken": {"integerValue": "1"}}), False)
+
 # 정리: 관리자 권한(ADC)으로 시험 데이터와 시험 사용자 삭제
 admin = {"Authorization": f"Bearer {ADMIN}", "x-goog-user-project": PROJECT}
 cleanup = [
@@ -122,6 +131,7 @@ cleanup = [
     call("DELETE", f"https://storage.googleapis.com/storage/v1/b/{BUCKET}/o/{urllib.parse.quote(fullres, safe='')}", headers=admin)[0],
     call("DELETE", f"{FS}/{photo}", headers=admin)[0],
     call("DELETE", f"{FS}/{ticket}", headers=admin)[0],
+    call("DELETE", f"{FS}/photographers/{a_uid}", headers=admin)[0],
     call("POST", f"https://identitytoolkit.googleapis.com/v1/projects/{PROJECT}/accounts:batchDelete", {"localIds": [a_uid, b_uid], "force": True}, admin)[0],
 ]
 print(f"정리 응답: {cleanup}")

@@ -11,3 +11,9 @@ DerivedData/
 
 # Firebase 앱 설정. 공개 저장소이므로 커밋하지 않고 각자 내려받는다.
 GoogleService-Info.plist
+
+# Cloud Functions 빌드·의존성
+firebase/functions/node_modules/
+firebase/functions/lib/
+firebase-debug.log
+firestore-debug.log

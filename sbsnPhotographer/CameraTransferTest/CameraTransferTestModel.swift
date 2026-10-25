@@ -24,6 +24,8 @@ import UIKit
 /// 2. 남는 대역으로 큰 파일을 `DeliveryPlanner` 순서대로 올린다: 구매한 사진의 고화질본 → 찜한 사진의 고화질본
 ///    → 구매한 사진의 원본(와이파이일 때만) → 나머지 고화질본(마지막 사진을 받은 뒤 정한 시간까지만 미리 올림).
 /// 3. 찜·구매는 Firestore 사진 문서를 지켜보다가 바뀌는 즉시 순서에 반영한다.
+///    앱이 백그라운드에 있을 때 들어온 구매는 서버 함수가 보내는 원격 알림으로 앱을 깨워 반영한다.
+///    백그라운드 업로드가 끝나 iOS가 앱을 잠깐 깨울 때도 서버에서 찜·구매를 다시 읽는다.
 /// LTE 실측 업로드가 3~4Mbps라 원본(약 20MB)을 전부 올리면 45장에 35~40분이 걸려서, 원본은 구매한 사진만 올린다.
 @Observable
 final class CameraTransferTestModel {
@@ -53,6 +55,10 @@ final class CameraTransferTestModel {
 
             var isWaiting: Bool {
                 if case .waiting = self { true } else { false }
+            }
+
+            var isUploading: Bool {
+                if case .uploading = self { true } else { false }
             }
 
             var isUploaded: Bool {
@@ -190,8 +196,9 @@ final class CameraTransferTestModel {
         if (1...4).contains(defaults.integer(forKey: "SBSNLargeUploadConcurrency")) {
             largeUploadConcurrency = defaults.integer(forKey: "SBSNLargeUploadConcurrency")
         }
-        if (1...240).contains(defaults.integer(forKey: "SBSNPrefetchMinutes")) {
-            prefetchMinutes = defaults.integer(forKey: "SBSNPrefetchMinutes")
+        // 0이면 미리 올리기를 끄고 찜·구매한 사진만 올린다. 화면에서는 1분부터 고를 수 있다.
+        if let minutes = defaults.string(forKey: "SBSNPrefetchMinutes").flatMap(Int.init), (0...240).contains(minutes) {
+            prefetchMinutes = minutes
         }
         uploadsOriginalsOnCellular = defaults.bool(forKey: "SBSNOriginalsOnCellular")
     }
@@ -222,9 +229,13 @@ final class CameraTransferTestModel {
             errorMessage = "FTP 서버를 시작하지 못했습니다: \(error.localizedDescription)"
         }
         refreshAddresses()
+        PurchaseWakeRouter.shared.handler = { [weak self] purchase in
+            await self?.handleWake(for: purchase) ?? false
+        }
     }
 
     func stop() {
+        PurchaseWakeRouter.shared.handler = nil
         exitShootingMode()
         server?.stop()
         server = nil
@@ -381,7 +392,7 @@ final class CameraTransferTestModel {
         demandTask = Task {
             do {
                 for try await demands in try await uploader.photoDemands() {
-                    apply(demands)
+                    apply(demands, source: "listener")
                 }
             } catch {
                 appendLog("demand listener failed: \(error)")
@@ -390,7 +401,8 @@ final class CameraTransferTestModel {
         }
     }
 
-    private func apply(_ demands: [String: TicketPhotoUploader.PhotoDemand]) {
+    /// `source`는 기록용이다: listener(실시간 리스너), push(구매 알림을 받고 다시 읽음), background wake(백그라운드 업로드가 끝나 깨어나 다시 읽음).
+    private func apply(_ demands: [String: TicketPhotoUploader.PhotoDemand], source: String) {
         var changed = false
         for index in photos.indices {
             guard let demand = demands[photos[index].fileName] else { continue }
@@ -399,11 +411,53 @@ final class CameraTransferTestModel {
             guard isFavorited != photos[index].isFavorited || isPurchased != photos[index].isPurchased else { continue }
             photos[index].isFavorited = isFavorited
             photos[index].isPurchased = isPurchased
-            appendLog("demand: \(photos[index].fileName) favorited \(isFavorited), purchased \(isPurchased)")
+            appendLog("demand (\(source)): \(photos[index].fileName) favorited \(isFavorited), purchased \(isPurchased)")
             changed = true
         }
         if changed {
             scheduleLargeUploads()
+        }
+    }
+
+    /// 서버에서 찜·구매를 한 번 읽어 반영한다. 읽지 못했으면 false.
+    @discardableResult
+    private func refreshDemands(trigger: String) async -> Bool {
+        do {
+            apply(try await uploader.fetchPhotoDemands(), source: trigger)
+            return true
+        } catch {
+            appendLog("demand refresh failed (\(trigger)): \(error)")
+            return false
+        }
+    }
+
+    /// 구매 알림을 받았을 때. 앱이 백그라운드에 있었으면 iOS가 잠깐(약 30초) 깨운 상태다.
+    /// 서버에서 찜·구매를 다시 읽어 구매한 사진부터 올리고, 그 시간 안에서 구매한 사진의 고화질본이 끝나기를 기다린다.
+    /// 고화질본은 putData로 깨어 있는 시간 안에 보낸다. 그 시간 안에 못 끝내면 앱이 멈추면서 같이 멈추고, 앱을 다시 열면 이어진다.
+    private func handleWake(for purchase: PhotographerPush.Purchase) async -> Bool {
+        appendLog("push: purchase \(purchase.fileName) in \(purchase.ticketID) (\(Self.applicationStateText))")
+        guard purchase.ticketID == ticketID else { return false }
+        if !(await refreshDemands(trigger: "push")),
+           let index = photos.firstIndex(where: { $0.fileName == purchase.fileName }), !photos[index].isPurchased {
+            // 서버를 못 읽으면 알림에 담긴 구매만이라도 반영한다.
+            photos[index].isPurchased = true
+            appendLog("demand (push payload): \(purchase.fileName) purchased true")
+            scheduleLargeUploads()
+        }
+        let deadline = Date().addingTimeInterval(25)
+        while Date() < deadline,
+              photos.contains(where: { $0.isPurchased && ($0.fullResolution.isWaiting || $0.fullResolution.isUploading) }) {
+            try? await Task.sleep(for: .milliseconds(500))
+        }
+        return true
+    }
+
+    /// 백그라운드 업로드가 끝나 iOS가 앱을 잠깐 깨웠을 때, 실시간 리스너가 그사이 들어온 구매를 놓쳤을 수 있어 서버에서 다시 읽는다.
+    /// 읽는 도중 앱이 멈추면 다음 업로드 시작이 늦어지므로 시간을 조금 더 받는다.
+    private func refreshDemandsIfInBackground() async {
+        guard UIApplication.shared.applicationState == .background else { return }
+        await withExtraBackgroundTime(name: "demand refresh") {
+            await refreshDemands(trigger: "background wake")
         }
     }
 
@@ -440,7 +494,7 @@ final class CameraTransferTestModel {
 
     private func uploadFullResolution(of photo: ReceivedPhoto) {
         let reason = photo.isPurchased ? "purchased" : photo.isFavorited ? "favorited" : "prefetch"
-        let start = beginLargeUpload(reason: reason)
+        let start = beginLargeUpload(reason: reason, sendsNow: photo.isPurchased)
         updatePhoto(photo.id) { $0.fullResolution = .uploading }
         let sourceURL = photo.fileURL
         let fileName = photo.fileName
@@ -466,6 +520,7 @@ final class CameraTransferTestModel {
                 finishLargeUpload(start: start, uploadedBytes: nil)
                 appendLog("fullres failed: \(fileName): \(error)")
             }
+            await refreshDemandsIfInBackground()
             scheduleLargeUploads()
         }
     }
@@ -487,12 +542,13 @@ final class CameraTransferTestModel {
                 finishLargeUpload(start: start, uploadedBytes: nil)
                 appendLog("original failed: \(photo.relativePath): \(error)")
             }
+            await refreshDemandsIfInBackground()
             scheduleLargeUploads()
         }
     }
 
-    private func beginLargeUpload(reason: String) -> UploadStart {
-        let start = UploadStart(transport: transportForNewUpload(), concurrency: largeUploadConcurrency, reason: reason)
+    private func beginLargeUpload(reason: String, sendsNow: Bool = false) -> UploadStart {
+        let start = UploadStart(transport: transportForNewUpload(sendsNow: sendsNow), concurrency: largeUploadConcurrency, reason: reason)
         if activeLargeUploads == 0 {
             largeBusySince = start.startedAt
         }
@@ -539,18 +595,28 @@ final class CameraTransferTestModel {
             self.transport = transport
             self.concurrency = concurrency
             self.reason = reason
-            appState = switch UIApplication.shared.applicationState {
-            case .active: "active"
-            case .inactive: "inactive"
-            case .background: "background"
-            @unknown default: "unknown"
-            }
+            appState = CameraTransferTestModel.applicationStateText
             startedAt = Date()
         }
     }
 
-    private func transportForNewUpload() -> TicketPhotoUploader.Transport {
-        switch uploadMethod {
+    private static var applicationStateText: String {
+        switch UIApplication.shared.applicationState {
+        case .active: "active"
+        case .inactive: "inactive"
+        case .background: "background"
+        @unknown default: "unknown"
+        }
+    }
+
+    /// sendsNow: 전송 방식 설정과 관계없이, 백그라운드면 지금 깨어 있는 시간 안에 putData로 보낸다.
+    /// 백그라운드에서 새로 시작한 putFile 전송은 iOS가 재량으로 미뤄, 구매 알림으로 깨어나 시작한 고화질본(6.5MB)이
+    /// 10분이 지나도 올라가지 않았다(2026-10-25 iP9, 셀룰러 핫스팟).
+    private func transportForNewUpload(sendsNow: Bool = false) -> TicketPhotoUploader.Transport {
+        if sendsNow && UIApplication.shared.applicationState == .background {
+            return .data
+        }
+        return switch uploadMethod {
         case .file: .file
         case .data: .data
         case .automatic: UIApplication.shared.applicationState == .background ? .file : .data
@@ -562,6 +628,11 @@ final class CameraTransferTestModel {
     private func withBackgroundTime<T>(for transport: TicketPhotoUploader.Transport, name: String,
                                        _ operation: () async throws -> T) async throws -> T {
         guard transport == .data else { return try await operation() }
+        return try await withExtraBackgroundTime(name: name, operation)
+    }
+
+    /// 앱이 백그라운드로 가거나 백그라운드에서 잠깐 깨어 있는 동안 작업을 끝낼 시간을 시스템에 조금 더 받는다(보통 30초 안팎).
+    private func withExtraBackgroundTime<T>(name: String, _ operation: () async throws -> T) async rethrows -> T {
         let id = UUID()
         backgroundTasks[id] = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
             self?.appendLog("background time expired: \(name)")
