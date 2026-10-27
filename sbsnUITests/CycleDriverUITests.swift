@@ -100,12 +100,7 @@ final class CycleDriverUITests: XCTestCase {
         let app = customerApp
         app.activate()
         allowSystemAlerts(seconds: 6)
-        let marker = app.descendants(matching: .any)["marker.\(photographerName)"]
-        // 지도 마커는 접근성 요소로 "이름, 이름" 같은 레이블만 남고 식별자는 지도 것으로 바뀐다.
-        let labeled = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", photographerName)).firstMatch
-        XCTAssertTrue(waitUntil(timeout: 60) { marker.exists || labeled.exists }, "지도에 작가가 보이지 않음")
-        attachScreenshot("C1 지도", app: app)
-        (marker.exists ? marker : labeled).tap()
+        selectPhotographerOnMap(app)
         let confirm = app.buttons["customer.confirm"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 10), "확정 버튼이 없음")
         confirm.tap()
@@ -114,6 +109,15 @@ final class CycleDriverUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["작가 확인됨"].waitForExistence(timeout: 60), "작가 앱이 받았다는 표시가 없음")
         print("SBSN 작가 확인까지 \(String(format: "%.1f", Date().timeIntervalSince(started)))초")
         attachScreenshot("C1 매칭", app: app)
+    }
+
+    /// 진단: 지도에서 작가를 골라 카드만 띄운다(확정하지 않음). 마커·카드의 시간 표시 언어를 확인할 때 쓴다.
+    func test_C9_customerPreviewsPhotographer() throws {
+        let app = customerApp
+        app.activate()
+        selectPhotographerOnMap(app)
+        XCTAssertTrue(app.buttons["customer.confirm"].waitForExistence(timeout: 10), "작가 카드가 없음")
+        attachScreenshot("C9 작가 카드", app: app)
     }
 
     func test_C2_customerSendsMessage() throws {
@@ -135,6 +139,21 @@ final class CycleDriverUITests: XCTestCase {
         XCTAssertTrue(start.waitForExistence(timeout: 20))
         start.tap()
         attachScreenshot("C3 시작", app: app)
+    }
+
+    /// 둘 다 시작하기 전에 고객이 촬영을 취소한다.
+    func test_C8_customerCancels() throws {
+        let app = customerApp
+        app.activate()
+        let cancel = app.buttons["취소"]
+        XCTAssertTrue(cancel.waitForExistence(timeout: 20), "취소 버튼이 없음")
+        cancel.tap()
+        let confirm = app.buttons["촬영 취소"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 10), "취소 확인 버튼이 없음")
+        confirm.tap()
+        print("SBSN 고객 취소 \(ISO8601DateFormatter().string(from: Date()))")
+        XCTAssertTrue(app.staticTexts["촬영을 취소했습니다."].waitForExistence(timeout: 20), "취소 화면으로 넘어가지 않음")
+        attachScreenshot("C8 취소", app: app)
     }
 
     /// 사진 목록이 촬영 중 화면으로 바뀌고 미리보기가 몇 장 왔는지 기록한다.
@@ -215,12 +234,26 @@ final class CycleDriverUITests: XCTestCase {
     func test_C0_customerDumpsHierarchy() throws {
         let app = customerApp
         app.activate()
+        print("SBSN 기기 선호 언어 \(Locale.preferredLanguages), 실행기 언어 \(Locale.current.identifier)")
         RunLoop.current.run(until: Date().addingTimeInterval(12))
         print("SBSN 화면 구조\n" + app.debugDescription)
         attachScreenshot("C0", app: app)
     }
 
     // MARK: - 도구
+
+    /// 지난 촬영 화면(끝남·취소)에 남아 있으면 지도로 돌아가 작가 마커를 누른다.
+    private func selectPhotographerOnMap(_ app: XCUIApplication) {
+        for title in ["새 촬영 찾기", "지도로 돌아가기"] where app.buttons[title].exists {
+            app.buttons[title].tap()
+        }
+        let marker = app.descendants(matching: .any)["marker.\(photographerName)"]
+        // 지도 마커는 접근성 요소로 "이름, 이름" 같은 레이블만 남고 식별자는 지도 것으로 바뀐다.
+        let labeled = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", photographerName)).firstMatch
+        XCTAssertTrue(waitUntil(timeout: 60) { marker.exists || labeled.exists }, "지도에 작가가 보이지 않음")
+        attachScreenshot("지도", app: app)
+        (marker.exists ? marker : labeled).tap()
+    }
 
     private func firstCellName(_ app: XCUIApplication) -> String? {
         let cell = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'photo.cell.'")).firstMatch
