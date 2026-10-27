@@ -20,6 +20,10 @@ test("백그라운드 작가 앱을 깨우는 알림을 만든다", () => {
   assert.equal(message.apns?.payload?.aps.contentAvailable, true);
   assert.equal(message.apns?.payload?.aps.threadId, "POC-1");
   assert.equal(message.apns?.headers?.["apns-push-type"], "alert");
+  assert.equal(message.apns?.headers?.["apns-priority"], "10");
+  // 같은 구매의 알림이 두 번 와도 배너는 하나
+  assert.equal(message.apns?.headers?.["apns-collapse-id"], "POC-1:DSC00001.JPG");
+  assert.equal(message.apns?.payload?.aps["interruption-level"], "time-sensitive");
   assert.match(message.notification?.body ?? "", /앱을 열어/);
 });
 

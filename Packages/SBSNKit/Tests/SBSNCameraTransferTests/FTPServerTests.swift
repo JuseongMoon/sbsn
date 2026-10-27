@@ -40,6 +40,23 @@ struct FTPServerTests {
         server.stop()
     }
 
+    /// 같은 사진을 다시 보내면 덮어쓰고, 같은 이름의 다른 사진은 새 이름으로 받는다(산 사진이 다른 사진으로 바뀌지 않게).
+    @Test func keepsDifferentPhotoWithSameNameSeparately() throws {
+        #expect(try curl(["-T", source.path(percentEncoded: false), "ftp://127.0.0.1:\(port)/"]).status == 0)
+        #expect(try curl(["-T", source.path(percentEncoded: false), "ftp://127.0.0.1:\(port)/"]).status == 0)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: root.path(percentEncoded: false)).sorted() == ["DSC00001.JPG"])
+
+        let other = source.deletingLastPathComponent().appending(path: "other/DSC00001.JPG")
+        try FileManager.default.createDirectory(at: other.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let body = Data((0..<1_000).map { UInt8(truncatingIfNeeded: $0 &* 31) })
+        try (body + [0xFF, 0xD9]).write(to: other)
+        #expect(try curl(["-T", other.path(percentEncoded: false), "ftp://127.0.0.1:\(port)/"]).status == 0)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: root.path(percentEncoded: false)).sorted() == ["DSC00001-2.JPG", "DSC00001.JPG"])
+        #expect(try Data(contentsOf: root.appending(path: "DSC00001.JPG")) == Data(contentsOf: source))
+        #expect(try Data(contentsOf: root.appending(path: "DSC00001-2.JPG")) == Data(contentsOf: other))
+        server.stop()
+    }
+
     @Test func rejectsJPEGWithoutEndMarker() throws {
         let truncated = source.deletingLastPathComponent().appending(path: "TRUNCATED.JPG")
         let result = try curl(["-T", truncated.path(percentEncoded: false), "ftp://127.0.0.1:\(port)/"])

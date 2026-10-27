@@ -10,6 +10,12 @@ public final class FTPServer: @unchecked Sendable {
         public let url: URL
         public let byteCount: Int
         public let duration: TimeInterval
+
+        public init(url: URL, byteCount: Int, duration: TimeInterval) {
+            self.url = url
+            self.byteCount = byteCount
+            self.duration = duration
+        }
     }
 
     public let port: UInt16

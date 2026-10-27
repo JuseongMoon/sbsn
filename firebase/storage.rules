@@ -1,36 +1,70 @@
 rules_version = '2';
 
-// 실증 단계 규칙: 촬영 티켓의 미리보기·고화질본·원본은 Firestore 티켓 문서의 작가만 올리고 읽는다.
+// MVP 사이클 규칙. 참여자 확인은 작가 앱이 올릴 때 객체 메타데이터에 적은 uid로 한다(Firestore 조회 없음).
+// Storage 규칙은 한 번에 Firestore 문서를 두 개까지만 읽을 수 있어, 구매 확인에만 사진 문서 하나를 읽는다.
 service firebase.storage {
   match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function ticketOf(ticketId) {
+      return firestore.get(/databases/(default)/documents/tickets/$(ticketId)).data;
+    }
+
     function isTicketPhotographer(ticketId) {
-      return request.auth != null
-        && firestore.get(/databases/(default)/documents/tickets/$(ticketId)).data.photographerUid == request.auth.uid;
+      return isSignedIn() && ticketOf(ticketId).photographerUid == request.auth.uid;
+    }
+
+    // 올리는 작가가 티켓의 작가이고, 메타데이터에 자기 uid와 티켓의 고객 uid를 적었는지.
+    function uploadsWithParticipants(ticketId) {
+      let t = ticketOf(ticketId);
+      return isSignedIn()
+        && t.photographerUid == request.auth.uid
+        && request.resource.metadata.photographerUid == request.auth.uid
+        && request.resource.metadata.customerUid == t.customerUid;
+    }
+
+    function isPhotographerByMetadata() {
+      return isSignedIn() && 'photographerUid' in resource.metadata && resource.metadata.photographerUid == request.auth.uid;
+    }
+
+    function isCustomerByMetadata() {
+      return isSignedIn() && 'customerUid' in resource.metadata && resource.metadata.customerUid == request.auth.uid;
+    }
+
+    function purchased(ticketId, photoId) {
+      return firestore.get(/databases/(default)/documents/tickets/$(ticketId)/photos/$(photoId)).data.get('purchasedAt', null) != null;
     }
 
     // 고객에게 먼저 보여 줄 저화질·워터마크 미리보기(긴 변 1024px JPEG, 백수십 KB).
     // 장당 구매라 쓸 만한 화질이 미리 나가지 않도록 크기를 1MB 미만으로 묶는다.
     match /tickets/{ticketId}/previews/{fileName} {
-      allow read: if isTicketPhotographer(ticketId);
-      allow create, update: if isTicketPhotographer(ticketId)
+      allow read: if isPhotographerByMetadata() || isCustomerByMetadata();
+      allow create, update: if uploadsWithParticipants(ticketId)
         && request.resource.size < 1024 * 1024
         && request.resource.contentType == 'image/jpeg';
       allow delete: if false;
     }
 
-    // 구매하면 넘기는 원해상도 고화질본(HEIC, 장당 약 6MB). 미리 올려 두되 구매 전 고객은 읽지 못한다.
-    // 고객 읽기(구매한 사진만)는 고객 인증과 구매 기록을 만든 뒤 추가한다.
+    // 구매하면 넘기는 원해상도 고화질본(HEIC, 장당 약 6MB). 미리 올려 두되 고객은 구매한 사진만 읽는다.
+    // 객체 이름 `<원본 파일명>.heic`에서 `.heic`를 떼면 사진 문서 ID다. 작가 조건을 앞에 두어 고객 조건의 오류는 거부로 떨어진다.
     match /tickets/{ticketId}/fullres/{fileName} {
-      allow read: if isTicketPhotographer(ticketId);
-      allow create, update: if isTicketPhotographer(ticketId)
+      allow read: if isPhotographerByMetadata()
+        || (isCustomerByMetadata()
+            && fileName.size() > 5
+            && fileName.matches('.*[.]heic')
+            && purchased(ticketId, fileName[0:fileName.size() - 5]));
+      allow create, update: if uploadsWithParticipants(ticketId)
         && request.resource.size < 50 * 1024 * 1024
         && request.resource.contentType == 'image/heic';
       allow delete: if false;
     }
 
+    // 카메라 원본. 고객 전달은 2차라 작가만 읽는다.
     match /tickets/{ticketId}/originals/{fileName} {
       allow read: if isTicketPhotographer(ticketId);
-      allow create, update: if isTicketPhotographer(ticketId)
+      allow create, update: if uploadsWithParticipants(ticketId)
         && request.resource.size < 200 * 1024 * 1024
         && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/octet-stream');
       allow delete: if false;

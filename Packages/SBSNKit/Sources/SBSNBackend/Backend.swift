@@ -11,8 +11,14 @@ public enum Backend {
     }
 
     /// 로그인한 사용자 ID. 아직 로그인하지 않았으면 익명으로 로그인한다.
-    static func signedInUserID() async throws -> String {
+    public static func signedInUserID() async throws -> String {
         try await SignIn.shared.userID()
+    }
+
+    /// 익명 계정을 버리고 다음 호출에서 새 계정을 만든다. 시험에서 "새 작가·새 고객"을 만들 때만 쓴다(디버그 메뉴).
+    /// 익명 계정은 키체인에 남아 앱을 지웠다 깔아도 같은 uid가 돌아올 수 있다.
+    public static func signOut() async throws {
+        try await SignIn.shared.signOut()
     }
 }
 
@@ -38,5 +44,10 @@ private actor SignIn {
             self.task = nil
             throw error
         }
+    }
+
+    func signOut() throws {
+        task = nil
+        try Auth.auth().signOut()
     }
 }

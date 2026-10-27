@@ -1,17 +1,18 @@
 import FirebaseFirestore
 import FirebaseStorage
 import Foundation
+import SBSNCore
 
-/// 촬영 티켓 단위로 사진을 서버에 올린다(실증 단계).
+/// 촬영 티켓 단위로 사진을 서버에 올린다.
 ///
-/// - Firestore `tickets/{ticketID}`: `photographerUid`, `createdAt`
+/// - Firestore `tickets/{ticketID}`: 고객이 작가를 확정할 때 만든다(`TicketService.confirm`). 작가 앱은 만들지 않는다.
 /// - Firestore `tickets/{ticketID}/photos/{원본 파일명}`: 미리보기·고화질본·원본 경로와 업로드 시각.
-///   찜(`favoritedAt`)과 구매(`purchasedAt`)는 고객·결제 서버가 쓰고 작가 앱은 읽기만 한다(보안 규칙으로 막음).
+///   찜(`favoritedAt`)·구매(`purchasedAt`)·전달(`deliveredAt`)은 고객 앱이 쓰고 작가 앱은 읽기만 한다(보안 규칙으로 막음).
 /// - Storage `tickets/{ticketID}/previews/{원본 파일명}.jpg`: 고객에게 먼저 보여 줄 저화질·워터마크 미리보기
 /// - Storage `tickets/{ticketID}/fullres/{원본 파일명}.heic`: 구매하면 넘기는 원해상도 고화질본
 /// - Storage `tickets/{ticketID}/originals/{원본 파일명}`: 원본(구매한 사진만)
 ///
-/// 보안 규칙이 티켓 문서의 `photographerUid`로 업로드 권한을 확인하므로, 티켓 문서를 먼저 만든 뒤 파일을 올린다.
+/// Storage 보안 규칙은 객체 메타데이터의 `customerUid`·`photographerUid`로 읽을 사람을 정하므로 모든 업로드에 참여자를 적는다.
 /// 미리보기와 원본을 언제, 몇 장씩 동시에, 어떤 전송 방식으로 올릴지는 호출하는 쪽이 정한다.
 public actor TicketPhotoUploader {
     public struct Upload: Sendable {
@@ -33,11 +34,12 @@ public actor TicketPhotoUploader {
     }
 
     public let ticketID: String
-    // 여러 사진이 동시에 올라올 때 티켓 생성이 한 번만 일어나도록, 진행 중인 작업을 함께 기다린다.
-    private var ticketTask: Task<Void, Error>?
+    /// 이 티켓의 고객. 객체 메타데이터에 적어 고객이 미리보기와 구매한 고화질본을 읽을 수 있게 한다.
+    public let customerUID: String
 
-    public init(ticketID: String) {
+    public init(ticketID: String, customerUID: String) {
         self.ticketID = ticketID
+        self.customerUID = customerUID
     }
 
     /// 미리보기 JPEG를 올리고 사진 문서를 만든다. `originalFileName`이 사진 문서 ID가 된다.
@@ -82,17 +84,41 @@ public actor TicketPhotoUploader {
                       transferDuration: transferDuration)
     }
 
-    /// 티켓 사진들의 찜·구매 상태를 실시간으로 받는다. 키는 원본 파일명. 티켓 문서가 없으면 먼저 만든다.
-    public func photoDemands() async throws -> AsyncThrowingStream<[String: PhotoDemand], Error> {
-        let photographerUID = try await Backend.signedInUserID()
-        try await createTicketIfNeeded(photographerUID: photographerUID)
-        return Self.listenToPhotoDemands(ticketID: ticketID)
+    /// 티켓 사진들의 찜·구매 상태를 실시간으로 받는다. 키는 원본 파일명.
+    public func photoDemands() -> AsyncThrowingStream<[String: PhotoDemand], Error> {
+        Self.listenToPhotoDemands(ticketID: ticketID)
     }
 
     /// 찜·구매 상태를 서버에서 한 번 읽는다. 앱이 백그라운드에서 잠깐 깨어났을 때처럼 실시간 리스너가 다시 붙기를 기다릴 수 없을 때 쓴다.
     public func fetchPhotoDemands() async throws -> [String: PhotoDemand] {
         let snapshot = try await ticketDocument.collection("photos").getDocuments(source: .server)
         return Self.demands(in: snapshot)
+    }
+
+    /// 사진 문서 전부를 서버에서 한 번 읽는다. 앱을 다시 켰을 때 어떤 파일이 이미 올라갔는지 복원하는 데 쓴다. 키는 원본 파일명.
+    public func fetchPhotoRecords() async throws -> [String: PhotoRecord] {
+        let snapshot = try await ticketDocument.collection("photos").getDocuments(source: .server)
+        var records: [String: PhotoRecord] = [:]
+        for document in snapshot.documents {
+            records[document.documentID] = FirestoreCodec.photo(id: document.documentID, data: document.data())
+        }
+        return records
+    }
+
+    /// 고화질본 객체가 이미 서버에 있는지. 업로드는 끝났는데 문서를 쓰기 전에 앱이 멈춘 경우를 복원할 때 확인한다.
+    public func fullResolutionExists(originalFileName: String) async -> Bool {
+        let reference = Storage.storage().reference(withPath: "tickets/\(ticketID)/fullres/\(originalFileName).heic")
+        return (try? await reference.getMetadata()) != nil
+    }
+
+    /// 고화질본 객체는 있는데 문서가 없을 때, 문서만 채운다.
+    public func recordFullResolution(originalFileName: String, byteCount: Int) async throws {
+        try await photoDocument(originalFileName).setData([
+            "fileName": originalFileName,
+            "fullresPath": "tickets/\(ticketID)/fullres/\(originalFileName).heic",
+            "fullresByteCount": byteCount,
+            "fullresUploadedAt": FieldValue.serverTimestamp(),
+        ], merge: true)
     }
 
     // Firestore는 리스너를 메인 스레드에서 부른다. 액터에 묶인 클로저로 만들면 Swift 6 격리 검사에 걸리므로 격리 밖에서 만든다.
@@ -144,9 +170,10 @@ public actor TicketPhotoUploader {
     /// 올린 바이트 수와 Storage 전송 시간을 돌려준다.
     private func put(_ url: URL, at storagePath: String, contentType: String, transport: Transport) async throws -> (Int, TimeInterval) {
         let photographerUID = try await Backend.signedInUserID()
-        try await createTicketIfNeeded(photographerUID: photographerUID)
         let metadata = StorageMetadata()
         metadata.contentType = contentType
+        // 보안 규칙이 이 메타데이터로 읽을 사람을 정한다. 티켓의 고객과 다르면 업로드가 거부된다.
+        metadata.customMetadata = ["ticketId": ticketID, "customerUid": customerUID, "photographerUid": photographerUID]
         let reference = Storage.storage().reference(withPath: storagePath)
         let startedAt = Date()
         let stored: StorageMetadata
@@ -165,26 +192,6 @@ public actor TicketPhotoUploader {
 
     private var ticketDocument: DocumentReference {
         Firestore.firestore().collection("tickets").document(ticketID)
-    }
-
-    private func createTicketIfNeeded(photographerUID: String) async throws {
-        if let ticketTask {
-            return try await ticketTask.value
-        }
-        let document = ticketDocument
-        let task = Task {
-            try await document.setData([
-                "photographerUid": photographerUID,
-                "createdAt": FieldValue.serverTimestamp(),
-            ], merge: true)
-        }
-        ticketTask = task
-        do {
-            try await task.value
-        } catch {
-            ticketTask = nil
-            throw error
-        }
     }
 
     private static func contentType(for url: URL) -> String {

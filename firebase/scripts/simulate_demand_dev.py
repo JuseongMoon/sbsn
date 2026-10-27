@@ -1,10 +1,13 @@
-"""sbsn-dev에서 고객의 찜·구매를 흉내 내고, 구매부터 고화질본이 올라가기까지 걸린 시간을 정리한다.
+"""sbsn-dev에서 고객 쪽 동작을 관리자 권한으로 흉내 내고, 구매부터 고화질본이 올라가기까지 걸린 시간을 정리한다.
 
-고객 앱과 결제가 아직 없어서, 찜(favoritedAt)과 구매(purchasedAt)를 관리자 권한으로 사진 문서에 기록한다.
-보안 규칙상 작가 앱은 이 두 항목을 쓸 수 없고 읽기만 한다. 시각은 Firestore 서버 시각으로 남긴다.
+작가 앱만 자동으로 시험할 때 쓴다. 고객 앱 없이 시험 티켓을 만들고(create-ticket), 찜(favoritedAt)과 구매(purchasedAt)를
+사진 문서에 기록한다. 보안 규칙상 작가 앱은 찜·구매를 쓸 수 없고 읽기만 한다. 시각은 Firestore 서버 시각으로 남긴다.
+실증 중 고객 앱에서 잘못 누른 구매도 clear로 지운다(앱에서는 구매를 되돌릴 수 없다).
 
 사용(저장소 루트에서, 토큰은 출력하지 않는다):
   export SBSN_ADMIN_TOKEN="$(gcloud auth application-default print-access-token)"
+  python3 -I firebase/scripts/simulate_demand_dev.py create-ticket <작가 uid> [고객 uid]
+    → 둘 다 시작한(촬영 중) 시험 티켓을 만들고 ID를 출력한다. 작가 앱을 -SBSNTicketID <ID>로 실행한다.
   python3 -I firebase/scripts/simulate_demand_dev.py latest
   python3 -I firebase/scripts/simulate_demand_dev.py favorite <티켓 ID> DSC00001.JPG [...]
   python3 -I firebase/scripts/simulate_demand_dev.py purchase <티켓 ID> DSC00002.JPG [...]
@@ -41,6 +44,19 @@ def latest_ticket():
         "limit": 1,
     }})
     return rows[0]["document"]["name"].rsplit("/", 1)[1] if rows and "document" in rows[0] else None
+
+
+def create_ticket(photographer_uid, customer_uid):
+    # 작가 단독 시험용. 고객 확정 트랜잭션과 작가 presence 잠금은 거치지 않으므로 매칭 알림 함수도 고객 uid가 있을 때만 돈다.
+    ticket = f"TEST-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    fields = {"photographerUid": {"stringValue": photographer_uid}, "customerUid": {"stringValue": customer_uid},
+              "photographerDisplayName": {"stringValue": "시험 작가"}}
+    writes = [{"update": {"name": f"{ROOT}/tickets/{ticket}", "fields": fields},
+               "updateTransforms": [{"fieldPath": key, "setToServerValue": "REQUEST_TIME"}
+                                    for key in ("createdAt", "customerStartedAt", "photographerStartedAt", "photographerAckAt")],
+               "currentDocument": {"exists": False}}]
+    call("POST", f"{API}:commit", {"writes": writes})
+    print(ticket)
 
 
 def mark(ticket, files, field):
@@ -93,7 +109,9 @@ def report(ticket):
 
 
 command = sys.argv[1]
-if command == "latest":
+if command == "create-ticket":
+    create_ticket(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "test-customer")
+elif command == "latest":
     print(latest_ticket())
 elif command in ("favorite", "purchase"):
     mark(sys.argv[2], sys.argv[3:], "favoritedAt" if command == "favorite" else "purchasedAt")

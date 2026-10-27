@@ -24,6 +24,10 @@ let package = Package(
             name: "SBSNBackend",
             targets: ["SBSNBackend"]
         ),
+        .library(
+            name: "SBSNUI",
+            targets: ["SBSNUI"]
+        ),
     ],
     dependencies: [
         .package(url: "https://github.com/firebase/firebase-ios-sdk", from: "13.0.0"),
@@ -61,6 +65,14 @@ let package = Package(
                 .product(name: "FirebaseMessaging", package: "firebase-ios-sdk"),
                 .product(name: "FirebaseStorage", package: "firebase-ios-sdk"),
             ],
+            swiftSettings: [
+                .enableUpcomingFeature("ApproachableConcurrency"),
+            ],
+        ),
+        // 작가 앱과 고객 앱이 같이 쓰는 화면(매칭 지도, 채팅).
+        .target(
+            name: "SBSNUI",
+            dependencies: ["SBSNCore", "SBSNBackend"],
             swiftSettings: [
                 .enableUpcomingFeature("ApproachableConcurrency"),
             ],

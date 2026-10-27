@@ -7,10 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		B96744BC91BB4BD9891AD49D /* SBSNCore in Frameworks */ = {isa = PBXBuildFile; productRef = AAC0B723C88D4C759850EDD8 /* SBSNCore */; };
-		F5EF008A3D5748DAABF2F06C /* SBSNCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4B8375695FE0427F8FECFF82 /* SBSNCore */; };
 		0485E21D287747EB9FA9B58E /* SBSNCameraTransfer in Frameworks */ = {isa = PBXBuildFile; productRef = 2634ABF59FDF4D4FA6CDE5E7 /* SBSNCameraTransfer */; };
 		233EE9898AAE4580AED2B2F5 /* SBSNBackend in Frameworks */ = {isa = PBXBuildFile; productRef = AF37E492F4274C58833287EF /* SBSNBackend */; };
+		3A7F2C9E4B1D4E8F9C2A5B6D /* SBSNUI in Frameworks */ = {isa = PBXBuildFile; productRef = 9D4B6E1F2A3C4D5E8F7A9B0C /* SBSNUI */; };
+		6E1C8A3F5D2B4F7A8E9C1D2B /* SBSNUI in Frameworks */ = {isa = PBXBuildFile; productRef = 2B9E7D4C6F1A4B3D9E8C5A7F /* SBSNUI */; };
+		7C1E5A2B9D4F4E0B8A6C1F3D /* SBSNBackend in Frameworks */ = {isa = PBXBuildFile; productRef = 5E2D7B4A1C8F4F6A9B3E0D7C /* SBSNBackend */; };
+		B96744BC91BB4BD9891AD49D /* SBSNCore in Frameworks */ = {isa = PBXBuildFile; productRef = AAC0B723C88D4C759850EDD8 /* SBSNCore */; };
+		F5EF008A3D5748DAABF2F06C /* SBSNCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4B8375695FE0427F8FECFF82 /* SBSNCore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -31,10 +34,10 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		015F59EAE9DE49E3B3456F5F /* sbsnPhotographer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = sbsnPhotographer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		63C3FD0B304FF8F2007DD7B7 /* sbsn.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = sbsn.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		63C3FD18304FF8F3007DD7B7 /* sbsnTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = sbsnTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		63C3FD22304FF8F3007DD7B7 /* sbsnUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = sbsnUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		015F59EAE9DE49E3B3456F5F /* sbsnPhotographer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = sbsnPhotographer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -48,6 +51,14 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		380F4DC26C5B4307BDDE48C6 /* sbsnPhotographer */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				7A1C5E0B2F4D4B8E9C3A6D21 /* Exceptions for "sbsnPhotographer" folder in "sbsnPhotographer" target */,
+			);
+			path = sbsnPhotographer;
+			sourceTree = "<group>";
+		};
 		63C3FD0D304FF8F2007DD7B7 /* sbsn */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = sbsn;
@@ -63,14 +74,6 @@
 			path = sbsnUITests;
 			sourceTree = "<group>";
 		};
-		380F4DC26C5B4307BDDE48C6 /* sbsnPhotographer */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				7A1C5E0B2F4D4B8E9C3A6D21 /* Exceptions for "sbsnPhotographer" folder in "sbsnPhotographer" target */,
-			);
-			path = sbsnPhotographer;
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -79,6 +82,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				B96744BC91BB4BD9891AD49D /* SBSNCore in Frameworks */,
+				7C1E5A2B9D4F4E0B8A6C1F3D /* SBSNBackend in Frameworks */,
+				3A7F2C9E4B1D4E8F9C2A5B6D /* SBSNUI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -103,6 +108,7 @@
 				F5EF008A3D5748DAABF2F06C /* SBSNCore in Frameworks */,
 				0485E21D287747EB9FA9B58E /* SBSNCameraTransfer in Frameworks */,
 				233EE9898AAE4580AED2B2F5 /* SBSNBackend in Frameworks */,
+				6E1C8A3F5D2B4F7A8E9C1D2B /* SBSNUI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -134,6 +140,32 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		4DE2C2E193D34176893EB4F1 /* sbsnPhotographer */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9BA3D7FDAE3A47B1AEABE02F /* Build configuration list for PBXNativeTarget "sbsnPhotographer" */;
+			buildPhases = (
+				59D18714254E4CC5BF8CE834 /* Sources */,
+				6BB09468FBFA4EFD9E0FD6A0 /* Frameworks */,
+				C4DB320FB2B54A8286944CFB /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				380F4DC26C5B4307BDDE48C6 /* sbsnPhotographer */,
+			);
+			name = sbsnPhotographer;
+			packageProductDependencies = (
+				4B8375695FE0427F8FECFF82 /* SBSNCore */,
+				2634ABF59FDF4D4FA6CDE5E7 /* SBSNCameraTransfer */,
+				AF37E492F4274C58833287EF /* SBSNBackend */,
+				2B9E7D4C6F1A4B3D9E8C5A7F /* SBSNUI */,
+			);
+			productName = sbsnPhotographer;
+			productReference = 015F59EAE9DE49E3B3456F5F /* sbsnPhotographer.app */;
+			productType = "com.apple.product-type.application";
+		};
 		63C3FD0A304FF8F2007DD7B7 /* sbsn */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 63C3FD2C304FF8F3007DD7B7 /* Build configuration list for PBXNativeTarget "sbsn" */;
@@ -152,6 +184,8 @@
 			name = sbsn;
 			packageProductDependencies = (
 				AAC0B723C88D4C759850EDD8 /* SBSNCore */,
+				5E2D7B4A1C8F4F6A9B3E0D7C /* SBSNBackend */,
+				9D4B6E1F2A3C4D5E8F7A9B0C /* SBSNUI */,
 			);
 			productName = sbsn;
 			productReference = 63C3FD0B304FF8F2007DD7B7 /* sbsn.app */;
@@ -203,31 +237,6 @@
 			productReference = 63C3FD22304FF8F3007DD7B7 /* sbsnUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
-		4DE2C2E193D34176893EB4F1 /* sbsnPhotographer */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 9BA3D7FDAE3A47B1AEABE02F /* Build configuration list for PBXNativeTarget "sbsnPhotographer" */;
-			buildPhases = (
-				59D18714254E4CC5BF8CE834 /* Sources */,
-				6BB09468FBFA4EFD9E0FD6A0 /* Frameworks */,
-				C4DB320FB2B54A8286944CFB /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				380F4DC26C5B4307BDDE48C6 /* sbsnPhotographer */,
-			);
-			name = sbsnPhotographer;
-			packageProductDependencies = (
-				4B8375695FE0427F8FECFF82 /* SBSNCore */,
-				2634ABF59FDF4D4FA6CDE5E7 /* SBSNCameraTransfer */,
-				AF37E492F4274C58833287EF /* SBSNBackend */,
-			);
-			productName = sbsnPhotographer;
-			productReference = 015F59EAE9DE49E3B3456F5F /* sbsnPhotographer.app */;
-			productType = "com.apple.product-type.application";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -238,6 +247,9 @@
 				LastSwiftUpdateCheck = 2660;
 				LastUpgradeCheck = 2660;
 				TargetAttributes = {
+					4DE2C2E193D34176893EB4F1 = {
+						CreatedOnToolsVersion = 27.0;
+					};
 					63C3FD0A304FF8F2007DD7B7 = {
 						CreatedOnToolsVersion = 26.6;
 					};
@@ -248,9 +260,6 @@
 					63C3FD21304FF8F3007DD7B7 = {
 						CreatedOnToolsVersion = 26.6;
 						TestTargetID = 63C3FD0A304FF8F2007DD7B7;
-					};
-					4DE2C2E193D34176893EB4F1 = {
-						CreatedOnToolsVersion = 27.0;
 					};
 				};
 			};
@@ -311,6 +320,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		59D18714254E4CC5BF8CE834 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		63C3FD07304FF8F2007DD7B7 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -326,13 +342,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		63C3FD1E304FF8F3007DD7B7 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		59D18714254E4CC5BF8CE834 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -487,6 +496,8 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "십분스냅";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "지도에서 촬영 가능한 작가를 찾고, 매칭된 작가에게 내 위치를 보여 주기 위해 위치를 사용합니다.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "구매한 사진을 사진 앱에 저장하기 위해 추가 권한이 필요합니다.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -520,6 +531,8 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "십분스냅";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "지도에서 촬영 가능한 작가를 찾고, 매칭된 작가에게 내 위치를 보여 주기 위해 위치를 사용합니다.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "구매한 사진을 사진 앱에 저장하기 위해 추가 권한이 필요합니다.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -626,42 +639,6 @@
 			};
 			name = Release;
 		};
-		EA0796C2461E47FA98BC3E93 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = sbsnPhotographer/sbsnPhotographer.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = LRMVZ8GHUX;
-				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = sbsnPhotographer/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "십분스냅 작가";
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "카메라에서 촬영한 사진을 같은 네트워크로 받기 위해 로컬 네트워크에 접근합니다.";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.ScienceFiction.sbsnPhotographer;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 6.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Debug;
-		};
 		86DEE510FAAC4B0EA7A800A2 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -676,6 +653,7 @@
 				INFOPLIST_FILE = sbsnPhotographer/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "십분스냅 작가";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "카메라에서 촬영한 사진을 같은 네트워크로 받기 위해 로컬 네트워크에 접근합니다.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "촬영 가능 상태일 때 고객 지도에 내 위치를 보여 주고, 매칭된 고객과 서로 위치를 공유하기 위해 위치를 사용합니다. 촬영 가능 상태인 동안에는 앱이 뒤에 있어도 계속 사용합니다.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -697,6 +675,43 @@
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
+		};
+		EA0796C2461E47FA98BC3E93 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = sbsnPhotographer/sbsnPhotographer.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = LRMVZ8GHUX;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = sbsnPhotographer/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "십분스냅 작가";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "카메라에서 촬영한 사진을 같은 네트워크로 받기 위해 로컬 네트워크에 접근합니다.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "촬영 가능 상태일 때 고객 지도에 내 위치를 보여 주고, 매칭된 고객과 서로 위치를 공유하기 위해 위치를 사용합니다. 촬영 가능 상태인 동안에는 앱이 뒤에 있어도 계속 사용합니다.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ScienceFiction.sbsnPhotographer;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
 		};
 /* End XCBuildConfiguration section */
 
@@ -756,17 +771,29 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		AAC0B723C88D4C759850EDD8 /* SBSNCore */ = {
+		2634ABF59FDF4D4FA6CDE5E7 /* SBSNCameraTransfer */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = SBSNCore;
+			productName = SBSNCameraTransfer;
+		};
+		2B9E7D4C6F1A4B3D9E8C5A7F /* SBSNUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SBSNUI;
 		};
 		4B8375695FE0427F8FECFF82 /* SBSNCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = SBSNCore;
 		};
-		2634ABF59FDF4D4FA6CDE5E7 /* SBSNCameraTransfer */ = {
+		5E2D7B4A1C8F4F6A9B3E0D7C /* SBSNBackend */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = SBSNCameraTransfer;
+			productName = SBSNBackend;
+		};
+		9D4B6E1F2A3C4D5E8F7A9B0C /* SBSNUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SBSNUI;
+		};
+		AAC0B723C88D4C759850EDD8 /* SBSNCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SBSNCore;
 		};
 		AF37E492F4274C58833287EF /* SBSNBackend */ = {
 			isa = XCSwiftPackageProductDependency;

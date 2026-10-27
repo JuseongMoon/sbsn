@@ -1,40 +1,47 @@
 rules_version = '2';
 
-// 실증 단계 규칙: 촬영 티켓을 만든 작가만 자기 티켓과 사진 목록을 읽고 쓴다.
-// 고객 접근과 티켓 상태 전이 검증은 티켓 모델을 확정한 뒤 추가한다.
+// MVP 사이클 규칙(결제 없음). 양쪽 모두 익명 로그인이다.
+//
+// - 고객이 지도에서 작가를 확정하면 고객 앱이 한 트랜잭션으로 티켓 생성 + 작가 presence 잠금 + 고객 문서 잠금을 쓴다.
+//   규칙은 getAfter로 세 쓰기를 서로 묶어, 같은 작가를 두 고객이 동시에 확정하면 하나만 통과시킨다.
+// - 티켓 상태는 문자열이 아니라 시각 필드로만 바뀐다. 각 시각은 비어 있을 때 서버 시각(request.time)으로 한 번만 쓴다.
+// - 없는 키를 비교하면 규칙이 오류로 거부되므로, 선택 필드는 반드시 get(key, null)로 읽는다.
 service cloud.firestore {
   match /databases/{database}/documents {
     function isSignedIn() {
       return request.auth != null;
     }
 
+    function me() {
+      return request.auth.uid;
+    }
+
+    function ticketPath(ticketId) {
+      return /databases/$(database)/documents/tickets/$(ticketId);
+    }
+
+    function ticketOf(ticketId) {
+      return get(ticketPath(ticketId)).data;
+    }
+
+    function isParticipantOf(t) {
+      return isSignedIn() && (t.customerUid == me() || t.photographerUid == me());
+    }
+
     function isTicketPhotographer(ticketId) {
-      return isSignedIn()
-        && get(/databases/$(database)/documents/tickets/$(ticketId)).data.photographerUid == request.auth.uid;
+      return isSignedIn() && ticketOf(ticketId).photographerUid == me();
     }
 
-    match /tickets/{ticketId} {
-      allow read: if isSignedIn() && resource.data.photographerUid == request.auth.uid;
-      allow create: if isSignedIn() && request.resource.data.photographerUid == request.auth.uid;
-      allow update: if isSignedIn()
-        && resource.data.photographerUid == request.auth.uid
-        && request.resource.data.photographerUid == resource.data.photographerUid;
-      allow delete: if false;
-
-      // 찜(favoritedAt)과 구매(purchasedAt)는 고객과 결제 서버가 쓴다. 작가 앱은 읽기만 하고 고칠 수 없다.
-      // 실증 단계에서는 관리자 스크립트(firebase/scripts/simulate_demand_dev.py)만 쓴다.
-      match /photos/{photoId} {
-        allow read: if isTicketPhotographer(ticketId);
-        allow create: if isTicketPhotographer(ticketId)
-          && !request.resource.data.keys().hasAny(['favoritedAt', 'purchasedAt']);
-        allow update: if isTicketPhotographer(ticketId)
-          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['favoritedAt', 'purchasedAt']);
-        allow delete: if false;
-      }
+    // 비어 있던 시각을 이번 요청의 서버 시각으로 채우는지
+    function setsOnce(before, after, key) {
+      return before.get(key, null) == null && after.get(key, null) == request.time;
     }
 
-    // 작가 기기의 푸시 토큰. 고객이 사진을 사면 서버 함수(firebase/functions)가 이 토큰으로 작가 앱을 깨운다.
-    // 작가 본인만 읽고 쓰며, 토큰과 갱신 시각 말고는 쓰지 못한다.
+    function isShooting(t) {
+      return t.get('customerStartedAt', null) != null && t.get('photographerStartedAt', null) != null;
+    }
+
+    // 작가 기기의 푸시 토큰. 서버 함수가 이 토큰으로 매칭·채팅·구매 알림을 보낸다. 본인만 읽고 쓴다.
     match /photographers/{uid} {
       allow read: if isSignedIn() && request.auth.uid == uid;
       allow create, update: if isSignedIn() && request.auth.uid == uid
@@ -42,6 +49,203 @@ service cloud.firestore {
         && request.resource.data.fcmToken is string
         && request.resource.data.fcmToken.size() < 4096;
       allow delete: if false;
+    }
+
+    // 작가의 공개 상태. 고객 지도가 읽는다. 위치는 작가 앱이 100m 격자로 뭉개서 올린다.
+    // activeTicketId는 매칭 잠금이다: 고객이 티켓을 만드는 트랜잭션에서만 채우고, 취소 트랜잭션이나 작가 본인만 비운다.
+    match /photographerPresence/{uid} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && request.query.limit <= 100;
+      allow create, update: if isSignedIn() && me() == uid && validPresence(request.resource.data);
+      allow update: if isSignedIn() && me() != uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activeTicketId'])
+        && (locksForNewTicket(uid) || releasesCancelledTicket(uid));
+      allow delete: if false;
+    }
+
+    function validPresence(d) {
+      return d.keys().hasOnly(['displayName', 'isAvailable', 'location', 'updatedAt', 'activeTicketId', 'expiresAt'])
+        && d.displayName is string && d.displayName.size() > 0 && d.displayName.size() < 40
+        && d.isAvailable is bool
+        && d.location is latlng
+        && d.updatedAt == request.time
+        && d.expiresAt is timestamp
+        && (d.get('activeTicketId', null) == null || d.activeTicketId is string);
+    }
+
+    // 고객이 같은 트랜잭션에서 방금 만든 티켓으로 작가를 잠근다. 촬영 가능이고, 잠겨 있지 않고, 10분 안에 살아 있음을 알린 작가만.
+    function locksForNewTicket(photographerUid) {
+      let before = resource.data;
+      let after = request.resource.data;
+      let t = getAfter(ticketPath(after.activeTicketId)).data;
+      return before.get('activeTicketId', null) == null
+        && before.isAvailable == true
+        && before.updatedAt + duration.value(10, 'm') > request.time
+        && after.activeTicketId is string
+        && t.customerUid == me()
+        && t.photographerUid == photographerUid
+        && t.createdAt == request.time;
+    }
+
+    // 고객이 같은 트랜잭션에서 취소한 티켓의 잠금을 푼다.
+    function releasesCancelledTicket(photographerUid) {
+      let before = resource.data;
+      let after = request.resource.data;
+      let t = getAfter(ticketPath(before.activeTicketId)).data;
+      return before.get('activeTicketId', null) is string
+        && after.get('activeTicketId', null) == null
+        && t.customerUid == me()
+        && t.photographerUid == photographerUid
+        && t.get('cancelledAt', null) == request.time;
+    }
+
+    // 고객의 활성 티켓. 한 고객이 여러 작가를 잠그지 못하게 하고, 다른 기기에서 활성 티켓을 찾는 데 쓴다.
+    match /customers/{uid} {
+      allow read: if isSignedIn() && me() == uid;
+      allow create: if isSignedIn() && me() == uid
+        && request.resource.data.keys().hasOnly(['activeTicketId'])
+        && claimsNewTicket(request.resource.data);
+      allow update: if isSignedIn() && me() == uid
+        && request.resource.data.keys().hasOnly(['activeTicketId'])
+        && ((resource.data.get('activeTicketId', null) == null && claimsNewTicket(request.resource.data))
+            || releasesFinishedTicket());
+      allow delete: if false;
+    }
+
+    function claimsNewTicket(after) {
+      let t = getAfter(ticketPath(after.activeTicketId)).data;
+      return after.activeTicketId is string && t.customerUid == me() && t.createdAt == request.time;
+    }
+
+    function releasesFinishedTicket() {
+      let before = resource.data;
+      let after = request.resource.data;
+      let t = getAfter(ticketPath(before.activeTicketId)).data;
+      return before.get('activeTicketId', null) is string
+        && after.get('activeTicketId', null) == null
+        && t.customerUid == me()
+        && (t.get('cancelledAt', null) != null || t.get('endedAt', null) != null);
+    }
+
+    // 촬영 티켓 = 매칭. 고객이 만들고, 참여자 둘만 읽는다.
+    match /tickets/{ticketId} {
+      allow read: if isSignedIn() && isParticipantOf(resource.data);
+      allow create: if isSignedIn() && validNewTicket(ticketId, request.resource.data);
+      allow update: if isSignedIn() && isParticipantOf(resource.data)
+        && !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['customerUid', 'photographerUid', 'photographerDisplayName', 'createdAt'])
+        && (customerTransition() || photographerTransition() || cancellation());
+      allow delete: if false;
+
+      // 사진 문서. 작가 앱이 미리보기·고화질본·원본 정보를 쓰고, 고객이 찜·구매·전달 시각을 쓴다.
+      match /photos/{photoId} {
+        allow read: if isSignedIn() && isParticipantOf(ticketOf(ticketId));
+        allow create: if isTicketPhotographer(ticketId)
+          && !request.resource.data.keys().hasAny(['favoritedAt', 'purchasedAt', 'deliveredAt']);
+        allow update: if (isTicketPhotographer(ticketId)
+            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['favoritedAt', 'purchasedAt', 'deliveredAt']))
+          || customerPhotoUpdate(ticketId);
+        allow delete: if false;
+      }
+
+      // 매칭 뒤 서로의 위치. 각자 자기 문서만 쓴다.
+      match /locations/{uid} {
+        allow read: if isSignedIn() && isParticipantOf(ticketOf(ticketId));
+        allow create, update: if isSignedIn() && me() == uid && isParticipantOf(ticketOf(ticketId))
+          && request.resource.data.keys().hasOnly(['location', 'updatedAt'])
+          && request.resource.data.location is latlng
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if false;
+      }
+
+      // 1:1 채팅. 글만 보내고 고치거나 지울 수 없다.
+      match /messages/{messageId} {
+        allow read: if isSignedIn() && isParticipantOf(ticketOf(ticketId));
+        allow create: if isSignedIn() && isParticipantOf(ticketOf(ticketId))
+          && request.resource.data.keys().hasOnly(['senderUid', 'text', 'sentAt'])
+          && request.resource.data.senderUid == me()
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 1000
+          && request.resource.data.sentAt == request.time;
+        allow update, delete: if false;
+      }
+    }
+
+    // 고객이 만드는 새 티켓: 같은 트랜잭션에서 작가 presence와 고객 문서가 이 티켓으로 잠겨야 한다.
+    function validNewTicket(ticketId, d) {
+      let p = getAfter(/databases/$(database)/documents/photographerPresence/$(d.photographerUid)).data;
+      let c = getAfter(/databases/$(database)/documents/customers/$(me())).data;
+      return d.keys().hasOnly(['customerUid', 'photographerUid', 'photographerDisplayName', 'createdAt'])
+        && d.customerUid == me()
+        && d.photographerUid is string
+        && d.photographerUid != me()
+        && d.createdAt == request.time
+        && d.photographerDisplayName == p.displayName
+        && p.activeTicketId == ticketId
+        && c.activeTicketId == ticketId;
+    }
+
+    // 고객: "시작" 한 번. 촬영 중에 작가가 사라지면 작가 시작 60분 뒤부터 종료할 수 있다.
+    function customerTransition() {
+      let before = resource.data;
+      let after = request.resource.data;
+      let keys = after.diff(before).affectedKeys();
+      return before.customerUid == me()
+        && before.get('cancelledAt', null) == null
+        && before.get('endedAt', null) == null
+        && ((keys.hasOnly(['customerStartedAt']) && setsOnce(before, after, 'customerStartedAt'))
+          || (keys.hasOnly(['endedAt']) && isShooting(before) && setsOnce(before, after, 'endedAt')
+              && before.photographerStartedAt + duration.value(60, 'm') < request.time));
+    }
+
+    // 작가: "시작" 한 번, 알림을 받았다는 표시 한 번, 촬영 중 종료 한 번.
+    function photographerTransition() {
+      let before = resource.data;
+      let after = request.resource.data;
+      let keys = after.diff(before).affectedKeys();
+      return before.photographerUid == me()
+        && before.get('cancelledAt', null) == null
+        && ((keys.hasOnly(['photographerStartedAt']) && before.get('endedAt', null) == null
+              && setsOnce(before, after, 'photographerStartedAt'))
+          || (keys.hasOnly(['photographerAckAt']) && setsOnce(before, after, 'photographerAckAt'))
+          || (keys.hasOnly(['endedAt']) && isShooting(before) && setsOnce(before, after, 'endedAt')));
+    }
+
+    // 둘 다 시작하기 전까지는 참여자 누구나 취소할 수 있다.
+    function cancellation() {
+      let before = resource.data;
+      let after = request.resource.data;
+      let keys = after.diff(before).affectedKeys();
+      return keys.hasOnly(['cancelledAt', 'cancelledBy'])
+        && before.get('cancelledAt', null) == null
+        && before.get('endedAt', null) == null
+        && !isShooting(before)
+        && after.cancelledAt == request.time
+        && after.cancelledBy == me();
+    }
+
+    // 고객의 찜(설정·해제), 구매(한 번, 취소 불가), 전달 기록.
+    // 촬영이 끝난 뒤에는 작가 앱이 더 올리지 않을 수 있으므로 고화질본이 이미 올라간 사진만 살 수 있다.
+    function customerPhotoUpdate(ticketId) {
+      let t = ticketOf(ticketId);
+      let before = resource.data;
+      let after = request.resource.data;
+      let keys = after.diff(before).affectedKeys();
+      return t.customerUid == me()
+        && keys.hasOnly(['favoritedAt', 'purchasedAt', 'deliveredAt'])
+        && (!keys.hasAny(['favoritedAt'])
+            || after.get('favoritedAt', null) == null
+            || after.favoritedAt == request.time)
+        && (!keys.hasAny(['purchasedAt'])
+            || (setsOnce(before, after, 'purchasedAt')
+                && before.get('previewUploadedAt', null) != null
+                && t.get('cancelledAt', null) == null
+                && (t.get('endedAt', null) == null || before.get('fullresUploadedAt', null) != null)))
+        && (!keys.hasAny(['deliveredAt'])
+            || (setsOnce(before, after, 'deliveredAt')
+                && before.get('purchasedAt', null) != null
+                && before.get('fullresUploadedAt', null) != null));
     }
   }
 }

@@ -14,10 +14,11 @@ import SBSNCameraTransfer
 import SBSNCore
 import UIKit
 
-/// 카메라의 FTP 자동 전송과 고객 전달 흐름을 실기기에서 검증하는 화면의 모델.
+/// 촬영 티켓 하나의 카메라 FTP 수신과 고객 전달(업로드) 엔진. 화면이 아니라 `PhotographerSession`이 소유한다.
 ///
-/// 받은 파일은 임시 촬영 티켓 폴더(`Application Support/Tickets/<티켓 ID>/originals`)에 모으고,
+/// 받은 파일은 촬영 티켓 폴더(`Application Support/Tickets/<티켓 ID>/originals`)에 모으고,
 /// 같은 티켓 폴더에 FTP 로그(`session-log.txt`), 수신 기록(`received.csv`), 업로드 기록(`uploads.csv`)을 남긴다.
+/// 앱을 다시 켜면 이 폴더와 서버의 사진 문서로 상태를 복원한다(`restore`).
 ///
 /// 전달 흐름(장당 구매):
 /// 1. 사진을 받으면 저화질·워터마크 미리보기(긴 변 1024px, 백수십 KB)를 바로 만들어 올린다.
@@ -26,6 +27,7 @@ import UIKit
 /// 3. 찜·구매는 Firestore 사진 문서를 지켜보다가 바뀌는 즉시 순서에 반영한다.
 ///    앱이 백그라운드에 있을 때 들어온 구매는 서버 함수가 보내는 원격 알림으로 앱을 깨워 반영한다.
 ///    백그라운드 업로드가 끝나 iOS가 앱을 잠깐 깨울 때도 서버에서 찜·구매를 다시 읽는다.
+/// 4. 실패한 업로드는 앱이 앞으로 오거나 인터넷이 돌아오면 자동으로 다시 올린다.
 /// LTE 실측 업로드가 3~4Mbps라 원본(약 20MB)을 전부 올리면 45장에 35~40분이 걸려서, 원본은 구매한 사진만 올린다.
 @Observable
 final class CameraTransferTestModel {
@@ -178,16 +180,32 @@ final class CameraTransferTestModel {
     private var backgroundTasks: [UUID: UIBackgroundTaskIdentifier] = [:]
     private var nextLogID = 0
     private var brightnessBeforeShooting: CGFloat?
+    /// 인터넷이 끊겼다 돌아오면 실패한 업로드를 다시 올린다.
+    private(set) var isNetworkAvailable = true
+    /// 실패 뒤 다시 올리기까지 기다리는 시간. 실패할수록 늘리고(최대 30초) 성공하면 되돌린다.
+    private var retryDelay: TimeInterval = 5
+    private var retryTask: Task<Void, Never>?
+    /// 앱을 다시 켜 복원한 사진. 고화질본을 올리기 전에 서버에 이미 있는지 확인한다(업로드 뒤 문서를 쓰기 전에 멈춘 경우).
+    private var restoredFileNames: Set<String> = []
+    /// 전달이 끝나 세션이 놓은 모델. 진행 중이던 작업이 끝나도 새 업로드를 시작하지 않는다.
+    private var isStopped = false
 
-    init() {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        ticketID = "POC-" + formatter.string(from: Date())
-        ticketDirectory = URL.applicationSupportDirectory
+    /// 티켓 폴더가 이미 있는지(앱을 다시 켰을 때 복원할 수 있는지)
+    static func hasLocalFiles(ticketID: String) -> Bool {
+        FileManager.default.fileExists(atPath: directory(for: ticketID).path(percentEncoded: false))
+    }
+
+    static func directory(for ticketID: String) -> URL {
+        URL.applicationSupportDirectory
             .appending(path: "Tickets", directoryHint: .isDirectory)
             .appending(path: ticketID, directoryHint: .isDirectory)
-        uploader = TicketPhotoUploader(ticketID: ticketID)
+    }
+
+    /// 티켓은 고객이 작가를 확정할 때 서버에 생긴다. 작가 앱은 그 ID와 고객 uid를 받아 쓴다.
+    init(ticketID: String, customerUID: String) {
+        self.ticketID = ticketID
+        ticketDirectory = Self.directory(for: ticketID)
+        uploader = TicketPhotoUploader(ticketID: ticketID, customerUID: customerUID)
         // 맥에서 조건을 바꿔 가며 실증을 돌릴 때 실행 인자로 넘긴다(예: -SBSNPrefetchMinutes 2 -SBSNOriginalsOnCellular YES).
         let defaults = UserDefaults.standard
         if let method = defaults.string(forKey: "SBSNUploadMethod").flatMap(UploadMethod.init(rawValue:)) {
@@ -229,24 +247,42 @@ final class CameraTransferTestModel {
             errorMessage = "FTP 서버를 시작하지 못했습니다: \(error.localizedDescription)"
         }
         refreshAddresses()
-        PurchaseWakeRouter.shared.handler = { [weak self] purchase in
-            await self?.handleWake(for: purchase) ?? false
-        }
     }
 
-    func stop() {
-        PurchaseWakeRouter.shared.handler = nil
+    /// 카메라 수신만 멈춘다(촬영 종료). 찜·구매 반영과 업로드는 계속된다.
+    func stopReceiving() {
         exitShootingMode()
         server?.stop()
         server = nil
         isRunning = false
+        isSuspendedForBackground = false
         keepsScreenAwake = false
+        appendLog("server stopped: shooting ended")
+    }
+
+    /// 전부 멈춘다(전달까지 끝났거나 티켓이 취소됐을 때).
+    func stop() {
+        isStopped = true
+        stopReceiving()
         demandTask?.cancel()
         demandTask = nil
+        retryTask?.cancel()
+        retryTask = nil
         pathMonitor?.cancel()
         pathMonitor = nil
-        appendLog("server stopped")
+        appendLog("model stopped")
     }
+
+    /// 아직 고객에게 넘길 것이 남았는지. 세션은 이것이 false가 된 뒤에야 티켓을 놓는다.
+    /// 촬영이 끝난 뒤에는 고화질본이 올라간 사진만 살 수 있으므로, 미리 올리기 시간 안이면 남은 고화질본도 마저 올린다.
+    var hasPendingDeliveries: Bool {
+        activeLargeUploads > 0
+            || photos.contains { $0.isPurchased && !$0.fullResolution.isUploaded }
+            || (isPrefetchOpen && photos.contains { $0.isReadyForLargeUploads && !$0.fullResolution.isUploaded })
+    }
+
+    /// 큰 파일 업로드가 하나 끝날 때마다 부른다. 세션이 전달이 다 끝났는지 확인하는 데 쓴다.
+    @ObservationIgnored var onLargeUploadFinished: (() -> Void)?
 
     /// iOS는 백그라운드에 있는 앱의 수신 대기 소켓을 회수할 수 있다. 실기기에서 12분 백그라운드 뒤 서버가
     /// "수신 대기 중"으로 보이면서도 카메라 접속을 받지 못했다. 그래서 백그라운드로 갈 때 서버를 닫고,
@@ -261,6 +297,7 @@ final class CameraTransferTestModel {
     }
 
     func resumeFromBackground() {
+        retryFailedUploads()
         guard isSuspendedForBackground else { return }
         isSuspendedForBackground = false
         appendLog("server resuming: app active")
@@ -312,13 +349,22 @@ final class CameraTransferTestModel {
         let monitor = NWPathMonitor()
         monitor.pathUpdateHandler = { [weak self] path in
             let isExpensive = path.isExpensive
-            Task { @MainActor in self?.updateNetwork(isExpensive: isExpensive) }
+            let isAvailable = path.status == .satisfied
+            Task { @MainActor in self?.updateNetwork(isExpensive: isExpensive, isAvailable: isAvailable) }
         }
         monitor.start(queue: DispatchQueue(label: "sbsn.path-monitor"))
         pathMonitor = monitor
     }
 
-    private func updateNetwork(isExpensive: Bool) {
+    /// 핫스팟을 켠 작가 폰은 셀룰러가 끊겨도 카메라 수신은 계속되므로, 인터넷이 돌아올 때 실패한 업로드를 다시 올린다.
+    private func updateNetwork(isExpensive: Bool, isAvailable: Bool) {
+        if isAvailable != isNetworkAvailable {
+            isNetworkAvailable = isAvailable
+            appendLog("network: \(isAvailable ? "available" : "unavailable")")
+            if isAvailable {
+                retryFailedUploads()
+            }
+        }
         guard isExpensive != isOnExpensiveNetwork else { return }
         isOnExpensiveNetwork = isExpensive
         appendLog("network: \(isExpensive ? "expensive (cellular)" : "not expensive (wi-fi)")")
@@ -334,6 +380,12 @@ final class CameraTransferTestModel {
     }
 
     private func append(_ photo: ReceivedPhoto) {
+        // 카메라가 같은 파일을 다시 보내면(전송 실패 뒤 재시도) 이미 올린 것을 다시 올리지 않는다.
+        // 다른 사진이 같은 이름으로 오는 경우는 FTP 서버가 이름을 바꿔 받는다.
+        if let existing = photos.first(where: { $0.relativePath == photo.relativePath }), existing.byteCount == photo.byteCount {
+            appendLog("received again, ignored: \(photo.relativePath)")
+            return
+        }
         photos.append(photo)
         lastReceivedAt = photo.receivedAt
         let fields = [
@@ -380,18 +432,19 @@ final class CameraTransferTestModel {
             } catch {
                 updatePhoto(photo.id) { $0.preview = .failed(error.localizedDescription) }
                 appendLog("preview failed: \(fileName): \(error)")
+                scheduleRetryAfterFailure()
             }
         }
     }
 
     // MARK: - 찜·구매
 
-    /// 티켓 문서는 첫 업로드 때 만들어지므로, 첫 미리보기가 올라간 뒤 찜·구매를 듣기 시작한다.
+    /// 첫 미리보기가 올라간 뒤(고객이 볼 사진이 생긴 뒤) 찜·구매를 듣기 시작한다. 복원 때는 바로 시작한다.
     private func startListeningToDemandsIfNeeded() {
         guard demandTask == nil else { return }
         demandTask = Task {
             do {
-                for try await demands in try await uploader.photoDemands() {
+                for try await demands in await uploader.photoDemands() {
                     apply(demands, source: "listener")
                 }
             } catch {
@@ -432,9 +485,10 @@ final class CameraTransferTestModel {
     }
 
     /// 구매 알림을 받았을 때. 앱이 백그라운드에 있었으면 iOS가 잠깐(약 30초) 깨운 상태다.
-    /// 서버에서 찜·구매를 다시 읽어 구매한 사진부터 올리고, 그 시간 안에서 구매한 사진의 고화질본이 끝나기를 기다린다.
+    /// 서버에서 찜·구매를 다시 읽어 구매한 사진부터 올리고, 남은 시간 안에서 알림에 담긴 그 한 장의 고화질본이 끝나기를 기다린다.
     /// 고화질본은 putData로 깨어 있는 시간 안에 보낸다. 그 시간 안에 못 끝내면 앱이 멈추면서 같이 멈추고, 앱을 다시 열면 이어진다.
-    private func handleWake(for purchase: PhotographerPush.Purchase) async -> Bool {
+    /// 여러 장을 한꺼번에 사면 알림마다 한 장씩 처리되고, 나머지는 앱이 앞으로 올 때 이어진다.
+    func handleWake(for purchase: PhotographerPush.Purchase) async -> Bool {
         appendLog("push: purchase \(purchase.fileName) in \(purchase.ticketID) (\(Self.applicationStateText))")
         guard purchase.ticketID == ticketID else { return false }
         if !(await refreshDemands(trigger: "push")),
@@ -444,9 +498,14 @@ final class CameraTransferTestModel {
             appendLog("demand (push payload): \(purchase.fileName) purchased true")
             scheduleLargeUploads()
         }
-        let deadline = Date().addingTimeInterval(25)
+        // 알림 처리에 주어진 시간은 약 30초다. 3초 여유를 두고 그 안에서만 기다린다.
+        let remaining = UIApplication.shared.applicationState == .background
+            ? min(max(UIApplication.shared.backgroundTimeRemaining - 3, 5), 25)
+            : 25
+        let deadline = Date().addingTimeInterval(remaining)
         while Date() < deadline,
-              photos.contains(where: { $0.isPurchased && ($0.fullResolution.isWaiting || $0.fullResolution.isUploading) }) {
+              let photo = photos.first(where: { $0.fileName == purchase.fileName }),
+              photo.isPurchased, photo.fullResolution.isWaiting || photo.fullResolution.isUploading {
             try? await Task.sleep(for: .milliseconds(500))
         }
         return true
@@ -465,6 +524,7 @@ final class CameraTransferTestModel {
 
     /// 빈자리가 있는 만큼 `DeliveryPlanner`가 고른 순서대로 큰 파일 업로드를 시작한다.
     private func scheduleLargeUploads() {
+        guard !isStopped else { return }
         let conditions = DeliveryPlanner.Conditions(
             isPrefetchOpen: isPrefetchOpen,
             allowsOriginals: !isOnExpensiveNetwork || uploadsOriginalsOnCellular
@@ -502,23 +562,35 @@ final class CameraTransferTestModel {
             .appending(path: "fullres", directoryHint: .isDirectory)
             .appending(path: fileName + ".heic")
         appendLog("fullres started: \(fileName) (\(reason), \(start.transport.rawValue), \(activeLargeUploads)/\(start.concurrency), \(start.appState))")
+        let wasRestored = restoredFileNames.contains(fileName)
         Task {
             do {
-                let renderStartedAt = Date()
-                try await Task.detached(priority: .userInitiated) {
-                    try PhotoPreviewRenderer.renderFullResolutionHEIC(from: sourceURL, to: fullResolutionURL)
-                }.value
-                let renderDuration = Date().timeIntervalSince(renderStartedAt)
-                let upload = try await withBackgroundTime(for: start.transport, name: "fullres \(fileName)") {
-                    try await uploader.uploadFullResolution(fileAt: fullResolutionURL, originalFileName: fileName, transport: start.transport)
+                // 복원한 사진은 지난번에 업로드는 끝났는데 문서를 쓰기 전에 앱이 멈췄을 수 있다. 서버에 있으면 문서만 채운다.
+                if wasRestored, await uploader.fullResolutionExists(originalFileName: fileName) {
+                    let byteCount = (try? FileManager.default.attributesOfItem(atPath: fullResolutionURL.path(percentEncoded: false))[.size] as? Int) ?? 0
+                    try await uploader.recordFullResolution(originalFileName: fileName, byteCount: byteCount)
+                    updatePhoto(photo.id) { $0.fullResolution = .uploaded(duration: 0) }
+                    finishLargeUpload(start: start, uploadedBytes: nil)
+                    appendLog("fullres already on server, document recorded: \(fileName)")
+                } else {
+                    let renderStartedAt = Date()
+                    try await Task.detached(priority: .userInitiated) {
+                        try PhotoPreviewRenderer.renderFullResolutionHEIC(from: sourceURL, to: fullResolutionURL)
+                    }.value
+                    let renderDuration = Date().timeIntervalSince(renderStartedAt)
+                    let upload = try await withBackgroundTime(for: start.transport, name: "fullres \(fileName)") {
+                        try await uploader.uploadFullResolution(fileAt: fullResolutionURL, originalFileName: fileName, transport: start.transport)
+                    }
+                    updatePhoto(photo.id) { $0.fullResolution = .uploaded(duration: upload.duration) }
+                    finishLargeUpload(start: start, uploadedBytes: upload.byteCount)
+                    recordUpload(kind: "fullres", photo: photo, upload: upload, start: start, renderDuration: renderDuration)
                 }
-                updatePhoto(photo.id) { $0.fullResolution = .uploaded(duration: upload.duration) }
-                finishLargeUpload(start: start, uploadedBytes: upload.byteCount)
-                recordUpload(kind: "fullres", photo: photo, upload: upload, start: start, renderDuration: renderDuration)
+                retryDelay = 5
             } catch {
                 updatePhoto(photo.id) { $0.fullResolution = .failed(error.localizedDescription) }
                 finishLargeUpload(start: start, uploadedBytes: nil)
                 appendLog("fullres failed: \(fileName): \(error)")
+                scheduleRetryAfterFailure()
             }
             await refreshDemandsIfInBackground()
             scheduleLargeUploads()
@@ -537,13 +609,29 @@ final class CameraTransferTestModel {
                 updatePhoto(photo.id) { $0.original = .uploaded(duration: upload.duration) }
                 finishLargeUpload(start: start, uploadedBytes: upload.byteCount)
                 recordUpload(kind: "original", photo: photo, upload: upload, start: start, renderDuration: nil)
+                retryDelay = 5
             } catch {
                 updatePhoto(photo.id) { $0.original = .failed(error.localizedDescription) }
                 finishLargeUpload(start: start, uploadedBytes: nil)
                 appendLog("original failed: \(photo.relativePath): \(error)")
+                scheduleRetryAfterFailure()
             }
             await refreshDemandsIfInBackground()
             scheduleLargeUploads()
+        }
+    }
+
+    /// 실패한 업로드를 잠시 뒤 다시 올린다. 인터넷이 없으면 돌아올 때(`updateNetwork`)까지 기다린다.
+    private func scheduleRetryAfterFailure() {
+        guard isNetworkAvailable, retryTask == nil else { return }
+        let delay = retryDelay
+        retryDelay = min(retryDelay * 2, 30)
+        retryTask = Task {
+            try? await Task.sleep(for: .seconds(delay))
+            retryTask = nil
+            guard !Task.isCancelled else { return }
+            appendLog("retrying failed uploads after \(Int(delay))s")
+            retryFailedUploads()
         }
     }
 
@@ -567,9 +655,11 @@ final class CameraTransferTestModel {
             largeBusyAccumulated += now.timeIntervalSince(since)
             largeBusySince = nil
         }
+        onLargeUploadFinished?()
     }
 
     func retryFailedUploads() {
+        guard isNetworkAvailable, photos.contains(where: { $0.preview.isFailed || $0.fullResolution.isFailed || $0.original.isFailed }) else { return }
         for photo in photos {
             if photo.preview.isFailed {
                 uploadPreview(of: photo)
@@ -580,6 +670,100 @@ final class CameraTransferTestModel {
             }
         }
         scheduleLargeUploads()
+    }
+
+    // MARK: - 복원
+
+    /// 앱을 다시 켰을 때 티켓 폴더의 원본과 서버의 사진 문서로 상태를 되살린다.
+    /// `headless`(알림으로 백그라운드 실행)면 깨어 있는 시간이 짧으므로 썸네일·EXIF·미리보기 재업로드는 생략한다.
+    /// 끝나면 찜·구매 리스너를 바로 붙이고 미완료 업로드를 이어 간다. 카메라 수신은 세션이 따로 시작한다.
+    func restore(headless: Bool) async {
+        let originals = ticketDirectory.appending(path: "originals", directoryHint: .isDirectory)
+        let received = Self.readReceivedCSV(at: ticketDirectory.appending(path: "received.csv"))
+        var restored: [ReceivedPhoto] = []
+        for (url, values) in Self.scanOriginals(originals) {
+            let byteCount = values.fileSize ?? 0
+            let relative = url.standardizedFileURL.pathComponents.dropFirst(originals.standardizedFileURL.pathComponents.count).joined(separator: "/")
+            let record = received[relative]
+            let receivedAt = record?.receivedAt ?? values.contentModificationDate ?? Date()
+            if headless {
+                restored.append(ReceivedPhoto(fileURL: url, relativePath: relative, byteCount: byteCount,
+                                              transferDuration: record?.transferDuration ?? 0, receivedAt: receivedAt,
+                                              capturedAt: record?.capturedAt, thumbnail: nil))
+            } else {
+                var photo = Self.makeReceivedPhoto(from: FTPServer.ReceivedFile(url: url, byteCount: byteCount, duration: record?.transferDuration ?? 0),
+                                                   root: originals)
+                photo = ReceivedPhoto(fileURL: photo.fileURL, relativePath: photo.relativePath, byteCount: photo.byteCount,
+                                      transferDuration: photo.transferDuration, receivedAt: receivedAt,
+                                      capturedAt: record?.capturedAt ?? photo.capturedAt, thumbnail: photo.thumbnail)
+                restored.append(photo)
+            }
+        }
+        restored.sort { $0.receivedAt < $1.receivedAt }
+
+        var records: [String: PhotoRecord] = [:]
+        do {
+            records = try await uploader.fetchPhotoRecords()
+        } catch {
+            appendLog("restore: photo records unavailable: \(error)")
+        }
+        for index in restored.indices {
+            let fileName = restored[index].fileName
+            guard let record = records[fileName] else { continue }
+            if record.hasPreview {
+                restored[index].preview = .uploaded(duration: 0)
+                restored[index].isReadyForLargeUploads = true
+            }
+            if record.isFullResolutionReady { restored[index].fullResolution = .uploaded(duration: 0) }
+            if record.originalUploadedAt != nil { restored[index].original = .uploaded(duration: 0) }
+            restored[index].isFavorited = record.isFavorited
+            restored[index].isPurchased = record.isPurchased
+        }
+        // 복원하는 사이 카메라에서 새로 받은 사진이 있으면 뒤에 붙여 둔다.
+        let restoredPaths = Set(restored.map(\.relativePath))
+        photos = restored + photos.filter { !restoredPaths.contains($0.relativePath) }
+        restoredFileNames = Set(restored.map(\.fileName))
+        // 마지막 수신 시각을 되살리지 않으면 미리 올리기 창이 다시 열려, 끝난 티켓의 고화질본을 전부 올리기 시작한다.
+        lastReceivedAt = photos.map(\.receivedAt).max()
+        appendLog("restored \(restored.count) photos (\(headless ? "headless" : "foreground")), records \(records.count), "
+            + "purchased \(restored.filter(\.isPurchased).count), fullres pending \(restored.filter { $0.isPurchased && !$0.fullResolution.isUploaded }.count)")
+        startMonitoringNetwork()
+        startListeningToDemandsIfNeeded()
+        if !headless {
+            for photo in restored where !photo.preview.isUploaded {
+                uploadPreview(of: photo)
+            }
+        }
+        scheduleLargeUploads()
+    }
+
+    /// 받은 원본 파일과 크기·수정 시각. FTP가 받는 중인 임시 파일(`.<이름>.part`)은 사진이 아니므로 지운다.
+    private nonisolated static func scanOriginals(_ originals: URL) -> [(URL, URLResourceValues)] {
+        let keys: Set<URLResourceKey> = [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]
+        guard let enumerator = FileManager.default.enumerator(at: originals, includingPropertiesForKeys: Array(keys)) else { return [] }
+        var files: [(URL, URLResourceValues)] = []
+        for case let url as URL in enumerator {
+            if url.lastPathComponent.hasPrefix(".") {
+                try? FileManager.default.removeItem(at: url)
+                continue
+            }
+            if let values = try? url.resourceValues(forKeys: keys), values.isRegularFile == true {
+                files.append((url, values))
+            }
+        }
+        return files
+    }
+
+    private static func readReceivedCSV(at url: URL) -> [String: (receivedAt: Date, capturedAt: Date?, transferDuration: TimeInterval)] {
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [:] }
+        var result: [String: (receivedAt: Date, capturedAt: Date?, transferDuration: TimeInterval)] = [:]
+        for line in text.split(separator: "\n") {
+            let fields = line.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+            guard fields.count >= 4, let receivedAt = isoFormatter.date(from: fields[3]) else { continue }
+            // 같은 파일이 다시 전송돼 두 줄이면 마지막 줄을 쓴다.
+            result[fields[0]] = (receivedAt, fields.count > 4 ? isoFormatter.date(from: fields[4]) : nil, Double(fields[2]) ?? 0)
+        }
+        return result
     }
 
     /// 업로드를 시작할 때의 조건. 측정 기록에 남긴다.

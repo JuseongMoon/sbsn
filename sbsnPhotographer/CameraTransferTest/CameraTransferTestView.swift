@@ -7,16 +7,19 @@
 
 import SwiftUI
 
-/// 카메라 → 작가 앱 FTP 자동 전송 실증 화면.
+/// 촬영 중 화면: 카메라 FTP 설정값, 받은 사진과 업로드 상태. 측정 항목(전송 방식·처리량·로그)은 `showsMeasurements`일 때만 보인다.
+/// 모델은 `PhotographerSession`이 소유한다. 이 화면을 닫아도 수신과 업로드는 계속된다.
 struct CameraTransferTestView: View {
-    @State private var model = CameraTransferTestModel()
-    @Environment(\.scenePhase) private var scenePhase
+    @Bindable var model: CameraTransferTestModel
+    var showsMeasurements = false
 
     var body: some View {
         List {
             Section {
                 LabeledContent("상태", value: model.isRunning ? "수신 대기 중" : "중지됨")
-                LabeledContent("촬영 티켓", value: model.ticketID)
+                if showsMeasurements {
+                    LabeledContent("촬영 티켓", value: model.ticketID)
+                }
                 if let message = model.errorMessage {
                     Text(message)
                         .foregroundStyle(.red)
@@ -44,6 +47,7 @@ struct CameraTransferTestView: View {
                 Text("보안 프로토콜은 끄고, 패시브 모드 항목이 있으면 켜 주세요.")
             }
 
+            if showsMeasurements {
             Section {
                 Stepper("미리 올리기 \(model.prefetchMinutes)분", value: $model.prefetchMinutes, in: 1...240)
                 LabeledContent("미리 올리기") {
@@ -83,6 +87,7 @@ struct CameraTransferTestView: View {
             } footer: {
                 Text("자동: 화면에 있을 때 putData, 백그라운드에서 시작하는 업로드는 putFile. 방식과 관계없이 백그라운드에서 시작하는 구매 고화질본은 putData로 보냅니다. 바꾼 값은 다음에 시작하는 업로드부터 적용됩니다. 처리량은 고화질본·원본을 올리고 있던 시간만으로 계산합니다.")
             }
+            }
 
             Section("받은 \(model.photos.count) · 미리보기 \(model.previewUploadedCount) · 고화질 \(model.fullResolutionUploadedCount) · 원본 \(model.originalUploadedCount)") {
                 if model.failedUploadCount > 0 {
@@ -95,35 +100,25 @@ struct CameraTransferTestView: View {
                 }
             }
 
-            Section("FTP 로그") {
-                ForEach(model.logLines.suffix(80).reversed()) { line in
-                    Text(line.text)
-                        .font(.caption2.monospaced())
+            if showsMeasurements {
+                Section("FTP 로그") {
+                    ForEach(model.logLines.suffix(80).reversed()) { line in
+                        Text(line.text)
+                            .font(.caption2.monospaced())
+                    }
                 }
             }
         }
-        .navigationTitle("카메라 전송 실증")
+        .navigationTitle(showsMeasurements ? "카메라 전송 측정" : "촬영")
         .toolbar {
             ToolbarItem {
                 Toggle("화면 켜두기", systemImage: "sun.max", isOn: $model.keepsScreenAwake)
             }
         }
         .task {
-            model.start()
             while !Task.isCancelled {
                 model.refreshAddresses()
                 try? await Task.sleep(for: .seconds(3))
-            }
-        }
-        .onChange(of: scenePhase) { _, phase in
-            model.note("scenePhase: \(phase)")
-            switch phase {
-            case .background:
-                model.suspendForBackground()
-            case .active:
-                model.resumeFromBackground()
-            default:
-                break
             }
         }
         .fullScreenCover(isPresented: Binding(
@@ -134,22 +129,16 @@ struct CameraTransferTestView: View {
                 model.exitShootingMode()
             }
         }
-        .onDisappear {
-            // 촬영 모드 화면이 덮을 때도 이 화면의 onDisappear가 불릴 수 있으므로 그때는 서버를 멈추지 않는다.
-            if !model.isShootingMode {
-                model.stop()
-            }
-        }
     }
 
     private var pushStatus: String {
-        let router = PurchaseWakeRouter.shared
-        let registration = switch router.registration {
+        let session = PhotographerSession.shared
+        let registration = switch session.registration {
         case .pending: "등록 중"
         case .registered: "등록됨"
         case .failed(let message): "등록 실패: \(message)"
         }
-        return router.isAlertAuthorized == false ? "\(registration) · 배너 꺼짐" : registration
+        return session.isAlertAuthorized == false ? "\(registration) · 배너 꺼짐" : registration
     }
 }
 
@@ -227,6 +216,6 @@ private struct UploadStateLabel: View {
 
 #Preview {
     NavigationStack {
-        CameraTransferTestView()
+        CameraTransferTestView(model: CameraTransferTestModel(ticketID: "preview", customerUID: "preview"), showsMeasurements: true)
     }
 }

@@ -419,20 +419,43 @@ final class FTPSession: @unchecked Sendable {
                     return self.reply(451, "Incomplete JPEG")
                 }
                 self.closeData()
+                var destination = transfer.destination
                 do {
                     if let partial = transfer.partial {
-                        try? FileManager.default.removeItem(at: transfer.destination)
-                        try FileManager.default.moveItem(at: partial, to: transfer.destination)
+                        destination = Self.finalDestination(for: transfer.destination, byteCount: total)
+                        try? FileManager.default.removeItem(at: destination)
+                        try FileManager.default.moveItem(at: partial, to: destination)
                     }
                 } catch {
                     try? transfer.partial.map(FileManager.default.removeItem(at:))
                     return self.reply(451, "Cannot finalize file")
                 }
-                let file = FTPServer.ReceivedFile(url: transfer.destination, byteCount: total, duration: Date().timeIntervalSince(transfer.startedAt))
+                let file = FTPServer.ReceivedFile(url: destination, byteCount: total, duration: Date().timeIntervalSince(transfer.startedAt))
                 self.server.didReceive(file)
                 return self.reply(226, "Transfer complete (\(total) bytes)")
             }
             self.receiveFile(from: connection, transfer: transfer, byteCount: total)
+        }
+    }
+
+    /// 같은 이름의 파일이 이미 있을 때: 크기가 같으면 카메라가 같은 사진을 다시 보낸 것이라 덮어쓰고,
+    /// 다르면 다른 사진(카드 교체·파일 번호 초기화·카메라 두 대)이라 `DSC00001-2.JPG`처럼 새 이름으로 받는다.
+    /// 사진 이름이 고객의 찜·구매 기록 키라서, 다른 사진이 산 사진을 덮으면 안 된다.
+    static func finalDestination(for destination: URL, byteCount: Int) -> URL {
+        let manager = FileManager.default
+        func size(of url: URL) -> Int? {
+            (try? manager.attributesOfItem(atPath: url.path)[.size] as? Int) ?? nil
+        }
+        guard let existing = size(of: destination), existing != byteCount else { return destination }
+        let base = destination.deletingPathExtension().lastPathComponent
+        let ext = destination.pathExtension
+        let directory = destination.deletingLastPathComponent()
+        var number = 2
+        while true {
+            let candidate = directory.appendingPathComponent(ext.isEmpty ? "\(base)-\(number)" : "\(base)-\(number).\(ext)")
+            guard let candidateSize = size(of: candidate) else { return candidate }
+            if candidateSize == byteCount { return candidate }
+            number += 1
         }
     }
 
