@@ -24,6 +24,16 @@ struct CameraTransferTestView: View {
                     Text(message)
                         .foregroundStyle(.red)
                 }
+                if model.isReceivingHEIF {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label("카메라 파일 형식을 JPEG로 바꿔 주세요", systemImage: "exclamationmark.triangle.fill")
+                            .font(.subheadline.bold())
+                            .foregroundStyle(.orange)
+                        Text("방금 받은 사진이 HEIF입니다. 이 사진도 고객에게 전달되지만 지원 형식은 JPEG입니다. 소니는 JPEG/HEIF 전환, 캐논은 HDR PQ, 니콘은 톤 모드와 HEIF 업로드 설정을 확인해 주세요.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 Button("촬영 모드 시작", systemImage: "camera.aperture") {
                     model.enterShootingMode()
                 }

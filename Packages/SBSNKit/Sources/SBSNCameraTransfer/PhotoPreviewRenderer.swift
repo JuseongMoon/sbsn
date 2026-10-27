@@ -90,6 +90,14 @@ public enum PhotoPreviewRenderer {
         }
     }
 
+    /// 카메라가 HEIF로 찍어 보냈는지. 작가 카메라 입력은 JPEG만 지원한다(2026-10-27 결정).
+    /// 카메라 HEIF는 대부분 10비트라 일부 안드로이드 기기가 열지 못하고(Galaxy A34 실측), iOS 17은 HDR HEIF를 톤 매핑하지 못한다.
+    /// iOS 작가 앱은 HEIF도 처리하지만 작가에게 카메라를 JPEG로 바꾸라고 알린다. ImageIO는 HEIC를 HEIF의 하위 형식으로 보지 않아 둘 다 확인한다.
+    public static func isHEIF(_ imageSource: CGImageSource) -> Bool {
+        guard let identifier = CGImageSourceGetType(imageSource) as String?, let type = UTType(identifier) else { return false }
+        return type.conforms(to: .heif) || type.conforms(to: .heic)
+    }
+
     /// 회전 정보 없는 sRGB 8비트 JPEG인지
     static func isPlainSRGBJPEG(_ imageSource: CGImageSource, properties: [CFString: Any]) -> Bool {
         let orientation = properties[kCGImagePropertyOrientation] as? Int ?? 1

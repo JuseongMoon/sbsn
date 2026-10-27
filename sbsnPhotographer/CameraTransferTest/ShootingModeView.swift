@@ -39,6 +39,12 @@ struct ShootingModeView: View {
                     }
                 }
 
+                if model.isReceivingHEIF {
+                    Label("HEIF 사진입니다. 카메라를 JPEG로 바꿔 주세요", systemImage: "exclamationmark.triangle.fill")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.orange)
+                }
+
                 if let line = model.logLines.last {
                     Text(line.text)
                         .font(.caption2.monospaced())

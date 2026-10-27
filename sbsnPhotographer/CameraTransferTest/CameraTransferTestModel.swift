@@ -80,6 +80,8 @@ final class CameraTransferTestModel {
         let receivedAt: Date
         let capturedAt: Date?
         let thumbnail: UIImage?
+        /// 카메라가 HEIF로 보냈는지. 처리는 되지만 지원 형식은 JPEG라 작가에게 카메라 설정을 바꾸라고 알린다.
+        var isHEIF = false
         var preview: UploadState = .waiting
         var fullResolution: UploadState = .waiting
         /// 구매한 사진만 올린다. 구매 전에는 계속 대기다.
@@ -151,6 +153,8 @@ final class CameraTransferTestModel {
     /// 지금 앱의 인터넷 경로가 셀룰러처럼 비싼 망인지. 핫스팟을 켜면 아이폰 자신의 인터넷은 셀룰러다.
     private(set) var isOnExpensiveNetwork = true
     private(set) var lastReceivedAt: Date?
+    /// 마지막으로 받은 사진이 HEIF인지. 작가가 카메라를 JPEG로 바꾸면 다음 사진부터 안내가 사라진다.
+    private(set) var isReceivingHEIF = false
     /// 큰 파일을 하나라도 올리고 있던 시간과 그동안 올린 바이트. 사진이 띄엄띄엄 와서 쉬는 시간은 빼고 계산한다.
     private(set) var largeUploadedBytes = 0
     private(set) var largeBusyDurationAtLastUpload: TimeInterval = 0
@@ -388,6 +392,10 @@ final class CameraTransferTestModel {
         }
         photos.append(photo)
         lastReceivedAt = photo.receivedAt
+        isReceivingHEIF = photo.isHEIF
+        if photo.isHEIF {
+            appendLog("received HEIF: \(photo.relativePath) (camera should be set to JPEG)")
+        }
         let fields = [
             photo.relativePath,
             String(photo.byteCount),
@@ -895,7 +903,9 @@ final class CameraTransferTestModel {
         let receivedAt = Date()
         var thumbnail: UIImage?
         var capturedAt: Date?
+        var isHEIF = false
         if let source = CGImageSourceCreateWithURL(file.url as CFURL, nil) {
+            isHEIF = PhotoPreviewRenderer.isHEIF(source)
             let options: [CFString: Any] = [
                 kCGImageSourceCreateThumbnailFromImageIfAbsent: true,
                 kCGImageSourceCreateThumbnailWithTransform: true,
@@ -915,7 +925,8 @@ final class CameraTransferTestModel {
             transferDuration: file.duration,
             receivedAt: receivedAt,
             capturedAt: capturedAt,
-            thumbnail: thumbnail
+            thumbnail: thumbnail,
+            isHEIF: isHEIF
         )
     }
 

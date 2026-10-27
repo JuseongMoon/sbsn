@@ -136,6 +136,18 @@ struct PhotoPreviewRendererTests {
         #expect(info.width == 1600 && info.height == 1200)
     }
 
+    /// 작가에게 카메라를 JPEG로 바꾸라고 알릴 HEIF 입력을 알아본다. 소니·캐논·니콘·후지는 확장자가 .HIF다.
+    @Test func detectsHEIFInputButNotJPEG() throws {
+        let heic = try makeImage(width: 640, height: 480, type: .heic, bitsPerComponent: 16,
+                                 colorSpace: CGColorSpace(name: CGColorSpace.displayP3)!)
+        let hif = heic.deletingPathExtension().appendingPathExtension("HIF")
+        try FileManager.default.moveItem(at: heic, to: hif)
+        let jpeg = try makeJPEG(width: 640, height: 480, properties: [:])
+
+        #expect(PhotoPreviewRenderer.isHEIF(try #require(CGImageSourceCreateWithURL(hif as CFURL, nil))))
+        #expect(!PhotoPreviewRenderer.isHEIF(try #require(CGImageSourceCreateWithURL(jpeg as CFURL, nil))))
+    }
+
     @Test func capsLongSideWhenAsked() throws {
         let source = try makeJPEG(width: 4000, height: 3000, properties: [:])
         let output = directory.appending(path: "full.jpg")
