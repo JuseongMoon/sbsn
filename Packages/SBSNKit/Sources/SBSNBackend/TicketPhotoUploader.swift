@@ -62,10 +62,11 @@ public actor TicketPhotoUploader {
                       transferDuration: transferDuration)
     }
 
-    /// 고객이 사진에 남긴 요청. 문서에 값이 있으면 그 시각에 찜·구매한 것이다.
+    /// 고객이 사진에 남긴 기록. 문서에 값이 있으면 그 시각에 찜·구매했거나, 구매한 고화질본을 사진 앱에 저장(전달)한 것이다.
     public struct PhotoDemand: Sendable, Equatable {
         public let favoritedAt: Date?
         public let purchasedAt: Date?
+        public let deliveredAt: Date?
     }
 
     /// 원해상도 고화질본(JPEG)을 올리고 사진 문서에 고화질본 정보를 더한다.
@@ -84,7 +85,7 @@ public actor TicketPhotoUploader {
                       transferDuration: transferDuration)
     }
 
-    /// 티켓 사진들의 찜·구매 상태를 실시간으로 받는다. 키는 원본 파일명.
+    /// 티켓 사진들의 찜·구매·전달 상태를 실시간으로 받는다. 키는 원본 파일명.
     public func photoDemands() -> AsyncThrowingStream<[String: PhotoDemand], Error> {
         Self.listenToPhotoDemands(ticketID: ticketID)
     }
@@ -143,7 +144,8 @@ public actor TicketPhotoUploader {
             let data = document.data()
             demands[document.documentID] = PhotoDemand(
                 favoritedAt: (data["favoritedAt"] as? Timestamp)?.dateValue(),
-                purchasedAt: (data["purchasedAt"] as? Timestamp)?.dateValue()
+                purchasedAt: (data["purchasedAt"] as? Timestamp)?.dateValue(),
+                deliveredAt: (data["deliveredAt"] as? Timestamp)?.dateValue()
             )
         }
         return demands

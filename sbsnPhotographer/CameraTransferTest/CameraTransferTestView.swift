@@ -99,7 +99,7 @@ struct CameraTransferTestView: View {
             }
             }
 
-            Section("받은 \(model.photos.count) · 미리보기 \(model.previewUploadedCount) · 고화질 \(model.fullResolutionUploadedCount) · 원본 \(model.originalUploadedCount)") {
+            Section("받은 \(model.photos.count) · 미리보기 \(model.previewUploadedCount) · 고화질 \(model.fullResolutionUploadedCount) · 원본 \(model.originalUploadedCount) · 전달 \(model.deliveredCount)") {
                 if model.failedUploadCount > 0 {
                     Button("업로드 실패 \(model.failedUploadCount)장 다시 올리기", systemImage: "arrow.clockwise.icloud") {
                         model.retryFailedUploads()
@@ -174,7 +174,11 @@ private struct ReceivedPhotoRow: View {
                 HStack(spacing: 6) {
                     Text(photo.relativePath)
                         .font(.subheadline.monospaced())
-                    if photo.isPurchased {
+                    if photo.isDelivered {
+                        // 고객 앱이 구매한 고화질본을 사진 앱에 저장했다.
+                        Label("전달 완료", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    } else if photo.isPurchased {
                         Label("구매", systemImage: "cart.fill")
                             .foregroundStyle(.orange)
                     } else if photo.isFavorited {

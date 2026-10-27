@@ -90,6 +90,8 @@ final class CameraTransferTestModel {
         var isReadyForLargeUploads = false
         var isFavorited = false
         var isPurchased = false
+        /// 고객 앱이 구매한 고화질본을 사진 앱에 저장했다(`deliveredAt`).
+        var isDelivered = false
 
         var fileName: String { fileURL.lastPathComponent }
 
@@ -162,6 +164,7 @@ final class CameraTransferTestModel {
     var previewUploadedCount: Int { photos.filter(\.preview.isUploaded).count }
     var fullResolutionUploadedCount: Int { photos.filter(\.fullResolution.isUploaded).count }
     var originalUploadedCount: Int { photos.filter(\.original.isUploaded).count }
+    var deliveredCount: Int { photos.filter(\.isDelivered).count }
     var failedUploadCount: Int {
         photos.filter { $0.preview.isFailed || $0.fullResolution.isFailed || $0.original.isFailed }.count
     }
@@ -467,6 +470,11 @@ final class CameraTransferTestModel {
         var changed = false
         for index in photos.indices {
             guard let demand = demands[photos[index].fileName] else { continue }
+            // 전달은 업로드 순서와 관계없어 화면만 바꾼다.
+            if (demand.deliveredAt != nil) != photos[index].isDelivered {
+                photos[index].isDelivered = demand.deliveredAt != nil
+                appendLog("delivered (\(source)): \(photos[index].fileName)")
+            }
             let isFavorited = demand.favoritedAt != nil
             let isPurchased = demand.purchasedAt != nil
             guard isFavorited != photos[index].isFavorited || isPurchased != photos[index].isPurchased else { continue }
@@ -726,6 +734,7 @@ final class CameraTransferTestModel {
             if record.originalUploadedAt != nil { restored[index].original = .uploaded(duration: 0) }
             restored[index].isFavorited = record.isFavorited
             restored[index].isPurchased = record.isPurchased
+            restored[index].isDelivered = record.isDelivered
         }
         // 복원하는 사이 카메라에서 새로 받은 사진이 있으면 뒤에 붙여 둔다.
         let restoredPaths = Set(restored.map(\.relativePath))
