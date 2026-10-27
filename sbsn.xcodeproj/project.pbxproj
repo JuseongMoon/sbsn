@@ -264,10 +264,11 @@
 				};
 			};
 			buildConfigurationList = 63C3FD06304FF8F2007DD7B7 /* Build configuration list for PBXProject "sbsn" */;
-			developmentRegion = en;
+			developmentRegion = ko;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				ko,
 				Base,
 			);
 			mainGroup = 63C3FD02304FF8F2007DD7B7;

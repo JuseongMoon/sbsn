@@ -8,6 +8,23 @@ struct PhotographerHomeView: View {
     var body: some View {
         @Bindable var session = session
         Form {
+            if session.ticket == nil, let cancelled = session.cancelledByCustomer {
+                Section {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label("고객이 촬영을 취소했습니다", systemImage: "xmark.circle.fill")
+                            .font(.headline)
+                            .foregroundStyle(.orange)
+                        if let cancelledAt = cancelled.cancelledAt {
+                            Text("\(cancelledAt, format: .dateTime.hour().minute()) 취소 · 매칭 \(cancelled.createdAt, format: .dateTime.hour().minute())")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Button("확인") { session.dismissCancellationNotice() }
+                        .accessibilityIdentifier("photographer.cancelledNotice.dismiss")
+                }
+            }
+
             if let ticket = session.ticket {
                 Section("진행 중인 촬영") {
                     NavigationLink(value: ticket.id) {

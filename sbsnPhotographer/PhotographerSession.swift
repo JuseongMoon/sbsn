@@ -39,6 +39,8 @@ final class PhotographerSession {
     private(set) var errorMessage: String?
     /// 알림을 탭해 열어야 할 티켓. 화면이 준비되면 가져간다.
     var pendingTicketID: String?
+    /// 고객이 취소한 촬영. 취소되면 티켓을 놓고 홈으로 돌아가므로 작가가 알 수 있게 홈에 남겨 둔다(새 매칭이 오거나 확인하면 지운다).
+    private(set) var cancelledByCustomer: TicketRecord?
     private(set) var isRestoring = false
     let location = PhotographerLocationTracker()
 
@@ -131,6 +133,7 @@ final class PhotographerSession {
     private func attach(ticketID: String, restoring: Bool) async {
         guard ticket?.id != ticketID, attachingTicketID != ticketID else { return }
         attachingTicketID = ticketID
+        cancelledByCustomer = nil
         defer { attachingTicketID = nil }
         UserDefaults.standard.set(ticketID, forKey: Self.activeTicketKey)
         ticketTask?.cancel()
@@ -182,6 +185,9 @@ final class PhotographerSession {
             detachTicket()
             if presence?.activeTicketId == record.id, let uid {
                 Task { try? await PhotographerDirectory.clearActiveTicket(uid: uid) }
+            }
+            if record.cancelledBy == record.customerUid {
+                announceCancellation(record)
             }
         }
         if previous?.phase != record.phase {
@@ -246,6 +252,25 @@ final class PhotographerSession {
             }
             self?.deliveryWatch = nil
         }
+    }
+
+    /// 고객이 취소하면 작가 앱은 티켓을 놓고 홈으로 돌아간다. 폰이 잠겨 있으면 작가가 모르고 고객을 찾아갈 수 있어
+    /// 홈에 안내를 남기고, 앱이 화면에 없으면 로컬 알림을 띄운다. 매칭 중에는 백그라운드 위치로 앱이 살아 있어
+    /// 티켓 리스너가 취소를 바로 받으므로 서버 알림 없이 된다(앱을 쓸어 올려 끈 경우는 다음에 열 때 홈 안내로 안다).
+    private func announceCancellation(_ record: TicketRecord) {
+        cancelledByCustomer = record
+        guard UIApplication.shared.applicationState != .active else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "촬영이 취소됐습니다"
+        content.body = "고객이 촬영을 취소했습니다."
+        content.sound = .default
+        content.interruptionLevel = .timeSensitive
+        let request = UNNotificationRequest(identifier: "ticket-cancelled-\(record.id)", content: content, trigger: nil)
+        Task { try? await UNUserNotificationCenter.current().add(request) }
+    }
+
+    func dismissCancellationNotice() {
+        cancelledByCustomer = nil
     }
 
     private func detachTicket() {
