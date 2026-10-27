@@ -560,7 +560,7 @@ final class CameraTransferTestModel {
         let fileName = photo.fileName
         let fullResolutionURL = ticketDirectory
             .appending(path: "fullres", directoryHint: .isDirectory)
-            .appending(path: fileName + ".heic")
+            .appending(path: fileName + ".jpg")
         appendLog("fullres started: \(fileName) (\(reason), \(start.transport.rawValue), \(activeLargeUploads)/\(start.concurrency), \(start.appState))")
         let wasRestored = restoredFileNames.contains(fileName)
         Task {
@@ -575,7 +575,7 @@ final class CameraTransferTestModel {
                 } else {
                     let renderStartedAt = Date()
                     try await Task.detached(priority: .userInitiated) {
-                        try PhotoPreviewRenderer.renderFullResolutionHEIC(from: sourceURL, to: fullResolutionURL)
+                        try PhotoPreviewRenderer.renderFullResolutionJPEG(from: sourceURL, to: fullResolutionURL)
                     }.value
                     let renderDuration = Date().timeIntervalSince(renderStartedAt)
                     let upload = try await withBackgroundTime(for: start.transport, name: "fullres \(fileName)") {

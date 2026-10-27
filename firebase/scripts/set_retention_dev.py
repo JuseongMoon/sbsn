@@ -1,6 +1,6 @@
 """sbsn-dev의 보존 정책을 건다. 둘 다 처음 한 번만 실행하면 된다.
 
-1. Storage 수명 주기(storage.lifecycle.json): 미리보기(previews/*.jpg)와 고화질본(fullres/*.heic)은 30일 뒤 지운다.
+1. Storage 수명 주기(storage.lifecycle.json): 미리보기(previews/*.jpg)와 고화질본(fullres/*.jpg, 이전 형식 *.heic 포함)은 30일 뒤 지운다.
    서울 버킷은 무료 할당이 없어 지우지 않으면 티켓마다 수백 MB가 매달 쌓인다. 구매한 고화질본도 지워지므로
    고객 앱은 받자마자 사진 앱에 저장한다. 원본(originals/)은 확장자가 달라 이 규칙에 걸리지 않는다(원본 전달은 2차).
 2. Firestore TTL: 작가 공개 상태(photographerPresence)의 expiresAt이 지나면 문서를 지운다(보통 24시간 안).

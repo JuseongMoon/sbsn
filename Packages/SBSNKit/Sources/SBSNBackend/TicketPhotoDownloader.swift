@@ -4,7 +4,7 @@ import Foundation
 /// 고객 앱이 티켓 사진 파일을 내려받는다.
 ///
 /// - 미리보기(`previews/<파일명>.jpg`): 메모리·디스크 캐시에만 두고 사진 앱에는 저장하지 않는다(워터마크 저화질).
-/// - 고화질본(`fullres/<파일명>.heic`): 구매한 사진만 읽힌다(보안 규칙). 파일로 받아 사진 앱에 넣는다.
+/// - 고화질본(`fullres/<파일명>.jpg`): 구매한 사진만 읽힌다(보안 규칙). 고객 최종본(JPEG)이라 받은 파일을 그대로 사진 앱에 넣는다.
 /// 캐시는 `Caches/Tickets/<티켓 ID>/` 아래라 저장 공간이 부족하면 시스템이 지울 수 있다.
 public actor TicketPhotoDownloader {
     public static let previewMaxBytes: Int64 = 1024 * 1024
@@ -48,20 +48,20 @@ public actor TicketPhotoDownloader {
         return data
     }
 
-    /// 고화질본 HEIC를 파일로 받는다. 확장자가 `.heic`여야 사진 앱이 형식을 알아본다.
+    /// 고화질본 JPEG를 파일로 받는다. 사진 앱은 확장자로 형식을 알아보므로 `.jpg`로 저장한다.
     public func downloadFullResolution(fileName: String) async throws -> URL {
-        let fileURL = directory.appending(path: "fullres", directoryHint: .isDirectory).appending(path: fileName + ".heic")
+        let fileURL = directory.appending(path: "fullres", directoryHint: .isDirectory).appending(path: fileName + ".jpg")
         if FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false)) {
             return fileURL
         }
         try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let reference = Storage.storage().reference(withPath: "tickets/\(ticketID)/fullres/\(fileName).heic")
+        let reference = Storage.storage().reference(withPath: TicketPhotoUploader.fullResolutionPath(ticketID: ticketID, originalFileName: fileName))
         return try await reference.writeAsync(toFile: fileURL)
     }
 
     /// 고화질본 객체가 서버에 있는지. 작가 앱이 업로드는 끝냈는데 문서를 쓰기 전에 멈춘 경우를 잡는다(구매한 사진만 읽힌다).
     public func fullResolutionExists(fileName: String) async -> Bool {
-        let reference = Storage.storage().reference(withPath: "tickets/\(ticketID)/fullres/\(fileName).heic")
+        let reference = Storage.storage().reference(withPath: TicketPhotoUploader.fullResolutionPath(ticketID: ticketID, originalFileName: fileName))
         return (try? await reference.getMetadata()) != nil
     }
 }

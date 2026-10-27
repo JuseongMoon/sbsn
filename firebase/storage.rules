@@ -47,17 +47,17 @@ service firebase.storage {
       allow delete: if false;
     }
 
-    // 구매하면 넘기는 원해상도 고화질본(HEIC, 장당 약 6MB). 미리 올려 두되 고객은 구매한 사진만 읽는다.
-    // 객체 이름 `<원본 파일명>.heic`에서 `.heic`를 떼면 사진 문서 ID다. 작가 조건을 앞에 두어 고객 조건의 오류는 거부로 떨어진다.
+    // 구매하면 넘기는 원해상도 고화질본(고객 최종본, JPEG, 장당 약 9MB). 미리 올려 두되 고객은 구매한 사진만 읽는다.
+    // 객체 이름 `<원본 파일명>.jpg`에서 `.jpg`를 떼면 사진 문서 ID다. 작가 조건을 앞에 두어 고객 조건의 오류는 거부로 떨어진다.
     match /tickets/{ticketId}/fullres/{fileName} {
       allow read: if isPhotographerByMetadata()
         || (isCustomerByMetadata()
-            && fileName.size() > 5
-            && fileName.matches('.*[.]heic')
-            && purchased(ticketId, fileName[0:fileName.size() - 5]));
+            && fileName.size() > 4
+            && fileName.matches('.*[.]jpg')
+            && purchased(ticketId, fileName[0:fileName.size() - 4]));
       allow create, update: if uploadsWithParticipants(ticketId)
         && request.resource.size < 50 * 1024 * 1024
-        && request.resource.contentType == 'image/heic';
+        && request.resource.contentType == 'image/jpeg';
       allow delete: if false;
     }
 

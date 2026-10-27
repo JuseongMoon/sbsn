@@ -67,7 +67,8 @@ struct PhotoPreviewRendererTests {
         #expect(difference.rightHalf > 0.02)
     }
 
-    @Test func fullResolutionHEICKeepsSizeAndShotDetailsButDropsPrivateData() throws {
+    @Test func fullResolutionJPEGBakesRotationKeepsShotDetailsAndDropsPrivateData() throws {
+        // 세로로 찍은 사진(EXIF 6)은 회전을 픽셀에 반영해 어느 뷰어에서나 세로로 보이게 한다.
         let source = try makeJPEG(width: 3000, height: 2000, properties: [
             kCGImagePropertyOrientation: 6,
             kCGImagePropertyGPSDictionary: [kCGImagePropertyGPSLatitude: 37.5796, kCGImagePropertyGPSLongitude: 126.977],
@@ -78,22 +79,71 @@ struct PhotoPreviewRendererTests {
             ],
             kCGImagePropertyTIFFDictionary: [kCGImagePropertyTIFFModel: "ILCE-7CM2"],
         ])
-        let output = directory.appending(path: "full.heic")
+        let output = directory.appending(path: "full.jpg")
 
-        try PhotoPreviewRenderer.renderFullResolutionHEIC(from: source, to: output)
+        try PhotoPreviewRenderer.renderFullResolutionJPEG(from: source, to: output)
 
-        let imageSource = try #require(CGImageSourceCreateWithURL(output as CFURL, nil))
-        #expect(CGImageSourceGetType(imageSource) as String? == UTType.heic.identifier)
-        let properties = try #require(CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any])
-        let exif = try #require(properties[kCGImagePropertyExifDictionary] as? [CFString: Any])
-        #expect(properties[kCGImagePropertyPixelWidth] as? Int == 3000)
-        #expect(properties[kCGImagePropertyPixelHeight] as? Int == 2000)
-        #expect(properties[kCGImagePropertyOrientation] as? Int == 6)
-        #expect(exif[kCGImagePropertyExifDateTimeOriginal] as? String == "2026:10:22 14:00:00")
-        #expect((properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any])?[kCGImagePropertyTIFFModel] as? String == "ILCE-7CM2")
-        #expect(properties[kCGImagePropertyGPSDictionary] == nil)
-        #expect(exif[kCGImagePropertyExifBodySerialNumber] == nil)
-        #expect(exif[kCGImagePropertyExifCameraOwnerName] == nil)
+        let info = try deliverable(output)
+        #expect(info.width == 2000 && info.height == 3000)
+        #expect(info.exif[kCGImagePropertyExifDateTimeOriginal] as? String == "2026:10:22 14:00:00")
+        #expect(info.tiff[kCGImagePropertyTIFFModel] as? String == "ILCE-7CM2")
+        #expect(info.properties[kCGImagePropertyGPSDictionary] == nil)
+        #expect(info.exif[kCGImagePropertyExifBodySerialNumber] == nil)
+        #expect(info.exif[kCGImagePropertyExifCameraOwnerName] == nil)
+    }
+
+    /// 가장 흔한 입력(가로 sRGB JPEG)은 그리지 않고 다시 인코딩만 하는 경로를 탄다. 이 경로에서도 개인정보는 빠져야 한다.
+    @Test func plainSRGBJPEGKeepsOriginalResolutionAndDropsPrivateData() throws {
+        let source = try makeJPEG(width: 3000, height: 2000, properties: [
+            kCGImagePropertyGPSDictionary: [kCGImagePropertyGPSLatitude: 37.5796, kCGImagePropertyGPSLongitude: 126.977],
+            kCGImagePropertyExifDictionary: [
+                kCGImagePropertyExifDateTimeOriginal: "2026:10:22 14:00:00",
+                kCGImagePropertyExifBodySerialNumber: "5012345",
+                kCGImagePropertyExifLensSerialNumber: "0001234",
+            ],
+        ])
+        let output = directory.appending(path: "full.jpg")
+
+        try PhotoPreviewRenderer.renderFullResolutionJPEG(from: source, to: output)
+
+        let info = try deliverable(output)
+        #expect(info.width == 3000 && info.height == 2000)
+        #expect(info.exif[kCGImagePropertyExifDateTimeOriginal] as? String == "2026:10:22 14:00:00")
+        #expect(info.properties[kCGImagePropertyGPSDictionary] == nil)
+        #expect(info.exif[kCGImagePropertyExifBodySerialNumber] == nil)
+        #expect(info.exif[kCGImagePropertyExifLensSerialNumber] == nil)
+    }
+
+    /// 카메라를 Adobe RGB로 두면 색 관리 안 하는 뷰어(메신저 등)에서 색이 바래 보이므로 sRGB 픽셀로 바꾼다.
+    @Test func adobeRGBIsConvertedToSRGB() throws {
+        let source = try makeJPEG(width: 1200, height: 800, properties: [:], colorSpace: CGColorSpace(name: CGColorSpace.adobeRGB1998)!)
+        let output = directory.appending(path: "full.jpg")
+
+        try PhotoPreviewRenderer.renderFullResolutionJPEG(from: source, to: output)
+
+        #expect(try deliverable(output).width == 1200)
+    }
+
+    /// 10비트 HEIF(Display P3)로 찍는 카메라도 8비트 sRGB JPEG로 넘긴다.
+    @Test func tenBitHEIFIsConvertedToEightBitJPEG() throws {
+        let source = try makeImage(width: 1600, height: 1200, type: .heic, bitsPerComponent: 16,
+                                   colorSpace: CGColorSpace(name: CGColorSpace.displayP3)!)
+        let output = directory.appending(path: "full.jpg")
+
+        try PhotoPreviewRenderer.renderFullResolutionJPEG(from: source, to: output)
+
+        let info = try deliverable(output)
+        #expect(info.width == 1600 && info.height == 1200)
+    }
+
+    @Test func capsLongSideWhenAsked() throws {
+        let source = try makeJPEG(width: 4000, height: 3000, properties: [:])
+        let output = directory.appending(path: "full.jpg")
+
+        try PhotoPreviewRenderer.renderFullResolutionJPEG(from: source, to: output, maxPixelSize: 2000)
+
+        let info = try deliverable(output)
+        #expect(info.width == 2000 && info.height == 1500)
     }
 
     @Test func rejectsFilesThatAreNotImages() throws {
@@ -105,21 +155,45 @@ struct PhotoPreviewRendererTests {
         }
     }
 
-    private func makeJPEG(width: Int, height: Int, properties: [CFString: Any]) throws -> URL {
+    private func makeJPEG(width: Int, height: Int, properties: [CFString: Any],
+                          colorSpace: CGColorSpace = CGColorSpace(name: CGColorSpace.sRGB)!) throws -> URL {
+        try makeImage(width: width, height: height, type: .jpeg, bitsPerComponent: 8, colorSpace: colorSpace, properties: properties)
+    }
+
+    private func makeImage(width: Int, height: Int, type: UTType, bitsPerComponent: Int, colorSpace: CGColorSpace,
+                           properties: [CFString: Any] = [:]) throws -> URL {
+        let bitmapInfo = bitsPerComponent == 16
+            ? CGImageAlphaInfo.noneSkipLast.rawValue | CGBitmapInfo.byteOrder16Little.rawValue
+            : CGImageAlphaInfo.noneSkipLast.rawValue
         let context = try #require(CGContext(
-            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
-            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+            data: nil, width: width, height: height, bitsPerComponent: bitsPerComponent, bytesPerRow: 0,
+            space: colorSpace, bitmapInfo: bitmapInfo
         ))
         // 압축이 되도록 단색이 아닌 그라데이션을 그린다.
         for x in stride(from: 0, to: width, by: 50) {
             context.setFillColor(red: CGFloat(x) / CGFloat(width), green: 0.5, blue: 1 - CGFloat(x) / CGFloat(width), alpha: 1)
             context.fill(CGRect(x: x, y: 0, width: 50, height: height))
         }
-        let url = directory.appending(path: "source-\(UUID().uuidString).jpg")
-        let destination = try #require(CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil))
+        let url = directory.appending(path: "source-\(UUID().uuidString).\(type.preferredFilenameExtension ?? "img")")
+        let destination = try #require(CGImageDestinationCreateWithURL(url as CFURL, type.identifier as CFString, 1, nil))
         CGImageDestinationAddImage(destination, try #require(context.makeImage()), properties as CFDictionary)
         #expect(CGImageDestinationFinalize(destination))
         return url
+    }
+
+    /// 고객 최종본이 지켜야 할 모양(JPEG, 회전 정보 1, 8비트, sRGB)을 확인하고 크기와 메타데이터를 돌려준다.
+    private func deliverable(_ url: URL) throws -> (width: Int, height: Int, properties: [CFString: Any],
+                                                    exif: [CFString: Any], tiff: [CFString: Any]) {
+        let source = try #require(CGImageSourceCreateWithURL(url as CFURL, nil))
+        #expect(CGImageSourceGetType(source) as String? == UTType.jpeg.identifier)
+        let properties = try #require(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
+        #expect(properties[kCGImagePropertyOrientation] as? Int ?? 1 == 1)
+        #expect(properties[kCGImagePropertyDepth] as? Int == 8)
+        let image = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        #expect(image.colorSpace?.name == CGColorSpace.sRGB, "색 공간: \(String(describing: image.colorSpace?.name))")
+        return (try #require(properties[kCGImagePropertyPixelWidth] as? Int), try #require(properties[kCGImagePropertyPixelHeight] as? Int),
+                properties, properties[kCGImagePropertyExifDictionary] as? [CFString: Any] ?? [:],
+                properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any] ?? [:])
     }
 
     private func pixelSize(of url: URL) throws -> (width: Int, height: Int) {

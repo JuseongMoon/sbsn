@@ -342,7 +342,7 @@ expect("C가 사진 문서 읽기", read(c, photo1), True)
 print("--- Storage ---")
 participants = {"customerUid": c_uid, "photographerUid": a_uid}
 preview = f"tickets/{T1}/previews/DSC00001.JPG.jpg"
-fullres1, fullres2, fullres9 = (f"tickets/{T1}/fullres/DSC0000{n}.JPG.heic" for n in (1, 2, 9))
+fullres1, fullres2, fullres9 = (f"tickets/{T1}/fullres/DSC0000{n}.JPG.jpg" for n in (1, 2, 9))
 original = f"tickets/{T1}/originals/DSC00001.JPG"
 expect("A가 미리보기 업로드(참여자 메타데이터)", upload(a, preview, metadata=participants), True)
 expect("A가 메타데이터 없이 업로드", upload(a, f"tickets/{T1}/previews/x.jpg"), False)
@@ -356,11 +356,11 @@ expect("B가 미리보기 읽기", read_object(b, preview), False)
 nometa = f"tickets/{T1}/previews/nometa.jpg"
 assert admin_upload_without_metadata(nometa) == 200
 expect("C가 메타데이터 없는 미리보기 읽기", read_object(c, nometa), False)
-expect("A가 고화질본 업로드", upload(a, fullres1, "image/heic", metadata=participants), True)
-expect("A가 미구매 고화질본 업로드", upload(a, fullres2, "image/heic", metadata=participants), True)
-expect("A가 사진 문서 없는 고화질본 업로드", upload(a, fullres9, "image/heic", metadata=participants), True)
-expect("A가 HEIC 아닌 고화질본", upload(a, f"tickets/{T1}/fullres/x.jpg", metadata=participants), False)
-expect("C가 고화질본 업로드", upload(c, f"tickets/{T1}/fullres/c.heic", "image/heic", metadata=participants), False)
+expect("A가 고화질본 업로드", upload(a, fullres1, metadata=participants), True)
+expect("A가 미구매 고화질본 업로드", upload(a, fullres2, metadata=participants), True)
+expect("A가 사진 문서 없는 고화질본 업로드", upload(a, fullres9, metadata=participants), True)
+expect("A가 JPEG 아닌 고화질본", upload(a, f"tickets/{T1}/fullres/x.heic", "image/heic", metadata=participants), False)
+expect("C가 고화질본 업로드", upload(c, f"tickets/{T1}/fullres/c.jpg", metadata=participants), False)
 expect("C가 구매한 고화질본 읽기", read_object(c, fullres1), True)
 expect("C가 구매 안 한 고화질본 읽기", read_object(c, fullres2), False)
 expect("C가 사진 문서 없는 고화질본 읽기", read_object(c, fullres9), False)

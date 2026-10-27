@@ -9,7 +9,7 @@ import SBSNCore
 /// - Firestore `tickets/{ticketID}/photos/{원본 파일명}`: 미리보기·고화질본·원본 경로와 업로드 시각.
 ///   찜(`favoritedAt`)·구매(`purchasedAt`)·전달(`deliveredAt`)은 고객 앱이 쓰고 작가 앱은 읽기만 한다(보안 규칙으로 막음).
 /// - Storage `tickets/{ticketID}/previews/{원본 파일명}.jpg`: 고객에게 먼저 보여 줄 저화질·워터마크 미리보기
-/// - Storage `tickets/{ticketID}/fullres/{원본 파일명}.heic`: 구매하면 넘기는 원해상도 고화질본
+/// - Storage `tickets/{ticketID}/fullres/{원본 파일명}.jpg`: 구매하면 넘기는 원해상도 고화질본(고객 최종본, JPEG)
 /// - Storage `tickets/{ticketID}/originals/{원본 파일명}`: 원본(구매한 사진만)
 ///
 /// Storage 보안 규칙은 객체 메타데이터의 `customerUid`·`photographerUid`로 읽을 사람을 정하므로 모든 업로드에 참여자를 적는다.
@@ -68,11 +68,11 @@ public actor TicketPhotoUploader {
         public let purchasedAt: Date?
     }
 
-    /// 원해상도 고화질본(HEIC)을 올리고 사진 문서에 고화질본 정보를 더한다.
+    /// 원해상도 고화질본(JPEG)을 올리고 사진 문서에 고화질본 정보를 더한다.
     public func uploadFullResolution(fileAt url: URL, originalFileName: String, transport: Transport) async throws -> Upload {
         let startedAt = Date()
-        let storagePath = "tickets/\(ticketID)/fullres/\(originalFileName).heic"
-        let (byteCount, transferDuration) = try await put(url, at: storagePath, contentType: "image/heic", transport: transport)
+        let storagePath = Self.fullResolutionPath(ticketID: ticketID, originalFileName: originalFileName)
+        let (byteCount, transferDuration) = try await put(url, at: storagePath, contentType: "image/jpeg", transport: transport)
 
         try await photoDocument(originalFileName).setData([
             "fileName": originalFileName,
@@ -107,7 +107,7 @@ public actor TicketPhotoUploader {
 
     /// 고화질본 객체가 이미 서버에 있는지. 업로드는 끝났는데 문서를 쓰기 전에 앱이 멈춘 경우를 복원할 때 확인한다.
     public func fullResolutionExists(originalFileName: String) async -> Bool {
-        let reference = Storage.storage().reference(withPath: "tickets/\(ticketID)/fullres/\(originalFileName).heic")
+        let reference = Storage.storage().reference(withPath: Self.fullResolutionPath(ticketID: ticketID, originalFileName: originalFileName))
         return (try? await reference.getMetadata()) != nil
     }
 
@@ -115,7 +115,7 @@ public actor TicketPhotoUploader {
     public func recordFullResolution(originalFileName: String, byteCount: Int) async throws {
         try await photoDocument(originalFileName).setData([
             "fileName": originalFileName,
-            "fullresPath": "tickets/\(ticketID)/fullres/\(originalFileName).heic",
+            "fullresPath": Self.fullResolutionPath(ticketID: ticketID, originalFileName: originalFileName),
             "fullresByteCount": byteCount,
             "fullresUploadedAt": FieldValue.serverTimestamp(),
         ], merge: true)
@@ -188,6 +188,11 @@ public actor TicketPhotoUploader {
 
     private func photoDocument(_ fileName: String) -> DocumentReference {
         ticketDocument.collection("photos").document(fileName)
+    }
+
+    /// 고화질본 객체 경로. 보안 규칙은 이름 끝의 `.jpg`를 떼어 사진 문서 ID로 쓴다.
+    public nonisolated static func fullResolutionPath(ticketID: String, originalFileName: String) -> String {
+        "tickets/\(ticketID)/fullres/\(originalFileName).jpg"
     }
 
     private var ticketDocument: DocumentReference {
