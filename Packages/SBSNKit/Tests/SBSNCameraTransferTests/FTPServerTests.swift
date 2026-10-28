@@ -103,6 +103,32 @@ struct FTPServerTests {
         server.stop()
     }
 
+    /// 작가 앱의 카메라 연결 표시에 쓰는 사건: 접속 → 로그인 → 받기 → 연결 닫힘 순서로 오고, 비밀번호가 틀리면 로그인 거부가 온다.
+    @Test func reportsConnectionEvents() throws {
+        server.stop()
+        let events = EventLog()
+        let observedPort = port &+ 1
+        let observed = FTPServer(port: observedPort, rootDirectory: root, credentials: ("camera", "sbsn"))
+        observed.onEvent = { events.append($0) }
+        try observed.start()
+        Thread.sleep(forTimeInterval: 0.2)
+        #expect(try curl(["-T", source.path(percentEncoded: false), "ftp://127.0.0.1:\(observedPort)/"]).status == 0)
+        Thread.sleep(forTimeInterval: 0.3)
+        #expect(try curl(["-T", source.path(percentEncoded: false), "ftp://127.0.0.1:\(observedPort)/"], password: "wrong").status != 0)
+        Thread.sleep(forTimeInterval: 0.3)
+        observed.stop()
+        #expect(events.all == [.connections(1), .loggedIn, .receiving("DSC00001.JPG"), .connections(0),
+                               .connections(1), .loginRejected, .connections(0)])
+    }
+
+    private final class EventLog: @unchecked Sendable {
+        private let lock = NSLock()
+        private var events: [FTPServer.Event] = []
+
+        func append(_ event: FTPServer.Event) { lock.withLock { events.append(event) } }
+        var all: [FTPServer.Event] { lock.withLock { events } }
+    }
+
     private func netcat(_ input: String) throws -> String {
         let process = Process()
         process.executableURL = URL(filePath: "/usr/bin/nc")

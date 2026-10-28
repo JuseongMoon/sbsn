@@ -23,4 +23,5 @@ test("매칭 알림은 작가 앱을 깨우고 10분 뒤에는 버려진다", ()
   assert.equal(message.apns?.headers?.["apns-collapse-id"], "T1");
   assert.equal(message.apns?.headers?.["apns-expiration"], String((now.getTime() + matchExpiration) / 1000));
   assert.match(message.notification?.body ?? "", /앱을 열어/);
+  assert.deepEqual(message.android, {priority: "high", notification: {channelId: "match", tag: "T1"}});
 });

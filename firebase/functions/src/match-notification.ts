@@ -1,5 +1,5 @@
 import type {TokenMessage} from "firebase-admin/messaging";
-import {photographerMessage} from "./notifications.js";
+import {deviceAlertMessage} from "./notifications.js";
 
 /** 티켓 문서(`tickets/{ticketId}`)에서 매칭 알림이 보는 항목 */
 export interface TicketFields {
@@ -22,12 +22,13 @@ export const matchExpiration = 10 * 60 * 1000;
  * presence 리스너를 붙인다. 작가가 앱을 쓸어 올려 종료했으면 iOS가 깨우지 않으므로 배너를 탭해 열어야 한다.
  */
 export function matchMessage(token: string, ticketId: string, now: Date): TokenMessage {
-  return photographerMessage({
+  return deviceAlertMessage({
     token,
     title: "새 촬영 요청",
     body: "고객이 촬영을 요청했습니다. 앱을 열어 위치와 채팅을 확인하세요.",
     data: {type: "match", ticketId},
     collapseId: ticketId,
+    androidChannelId: "match",
     threadId: ticketId,
     wakesApp: true,
     expiresAt: new Date(now.getTime() + matchExpiration),

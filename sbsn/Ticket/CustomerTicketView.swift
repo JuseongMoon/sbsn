@@ -24,7 +24,7 @@ struct CustomerTicketView: View {
     @State private var showsCancelConfirm = false
     @State private var showsEndConfirm = false
     @State private var showsChat = false
-    /// `canEnd`는 시각에 따라 달라지므로 주기적으로 갱신한다.
+    /// `canEnd`와 작가 응답 없음 안내는 시각에 따라 달라지므로 주기적으로 갱신한다.
     @State private var now = Date()
 
     init(ticketId: String, myUid: String) {
@@ -41,6 +41,7 @@ struct CustomerTicketView: View {
                 .toolbar { toolbarContent }
                 .task(id: listenerGeneration) { await listen() }
                 .task { await tickClock() }
+                .task { await CustomerAppDelegate.requestAuthorizationIfNeeded() }
                 .onChange(of: ticket?.phase, initial: true) { _, phase in handlePhaseChange(phase) }
                 .sheet(isPresented: $showsChat) { chatSheet }
                 .confirmationDialog("촬영을 취소할까요?", isPresented: $showsCancelConfirm, titleVisibility: .visible) {
@@ -73,7 +74,7 @@ struct CustomerTicketView: View {
         } else if let ticket {
             switch ticket.phase {
             case .matched, .waitingForPhotographer, .waitingForCustomer:
-                TicketMeetupView(ticket: ticket, myUid: myUid, sharing: workspace.locationSharing)
+                TicketMeetupView(ticket: ticket, myUid: myUid, sharing: workspace.locationSharing, now: now)
                     .safeAreaInset(edge: .bottom) { meetupBar(ticket) }
             case .shooting, .ended:
                 TicketPhotoGridView(ticket: ticket, workspace: workspace)

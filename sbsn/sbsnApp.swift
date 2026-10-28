@@ -10,6 +10,8 @@ import SwiftUI
 
 @main
 struct sbsnApp: App {
+    @UIApplicationDelegateAdaptor(CustomerAppDelegate.self) private var appDelegate
+
     init() {
         Backend.configure()
     }

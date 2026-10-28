@@ -112,6 +112,24 @@ final class CameraTransferTestModel {
         let text: String
     }
 
+    /// 카메라 연결 상태. 작가가 카메라 FTP 설정이 맞는지 화면에서 바로 알 수 있게 한다.
+    /// 카메라는 사진을 보낼 때 접속했다가 다 보내면 연결을 닫기도 하므로 `closed`는 오류가 아니다.
+    enum CameraLink: Equatable {
+        /// 이번에 서버를 연 뒤 카메라가 아직 접속하지 않았다.
+        case waiting
+        /// 접속했고 로그인 전이다.
+        case connecting
+        /// 사용자 이름이나 비밀번호가 틀렸다. 카메라가 다시 접속해 로그인할 때까지 남긴다.
+        case loginRejected
+        case connected
+        /// 사진을 받는 중(파일 이름)
+        case receiving(String)
+        /// 받던 사진의 전송이 중간에 끊겼다(파일 이름).
+        case interrupted(String)
+        /// 로그인까지 했던 카메라가 연결을 닫았다.
+        case closed
+    }
+
     static let port: UInt16 = 2121
     static let user = "camera"
     static let password = "sbsn"
@@ -119,6 +137,8 @@ final class CameraTransferTestModel {
     let ticketID: String
     let ticketDirectory: URL
     private(set) var isRunning = false
+    private(set) var cameraLink = CameraLink.waiting
+    private(set) var cameraLinkChangedAt = Date()
     private(set) var addresses: [InterfaceAddress] = []
     private(set) var photos: [ReceivedPhoto] = []
     private(set) var logLines: [LogLine] = []
@@ -132,8 +152,10 @@ final class CameraTransferTestModel {
         didSet { appendLog("upload method: \(uploadMethod.rawValue)") }
     }
     /// 큰 파일(고화질본·원본)을 동시에 몇 개까지 올릴지. LTE 실측에서 동시 업로드는 합계 속도를 늘리지 못했다.
+    /// 현장에서 개수를 바꿔 비교할 수 있게 바꾼 값은 저장해 앱을 다시 켜도 유지한다(실행 인자가 있으면 그 값이 먼저다).
     var largeUploadConcurrency = 1 {
         didSet {
+            UserDefaults.standard.set(largeUploadConcurrency, forKey: "SBSNLargeUploadConcurrency")
             appendLog("large upload concurrency: \(largeUploadConcurrency)")
             scheduleLargeUploads()
         }
@@ -177,6 +199,13 @@ final class CameraTransferTestModel {
     var isPrefetchOpen: Bool { prefetchDeadline.map { Date() < $0 } ?? true }
 
     private var server: FTPServer?
+    /// 이번에 연 서버에 카메라가 로그인한 적이 있는지. 연결이 0개가 되면 `waiting`과 `closed`를 가른다.
+    private var hasCameraLoggedIn = false
+    private var openCameraConnections = 0
+    /// 복원이 받는 중이던 임시 파일(`.<이름>.part`)을 지우기 전에 서버가 열리면, 그사이 카메라가 보내던 사진을 지워 버린다
+    /// (안드로이드에서 실측). 복원할 모델은 파일 정리가 끝날 때까지 서버를 열지 않고, 그동안 들어온 시작 요청은 정리 뒤에 한다.
+    private var holdsServerForRestore = false
+    private var startDeferredByRestore = false
     private var isSuspendedForBackground = false
     private let uploader: TicketPhotoUploader
     private var demandTask: Task<Void, Never>?
@@ -230,6 +259,11 @@ final class CameraTransferTestModel {
 
     func start() {
         guard server == nil else { return }
+        guard !holdsServerForRestore else {
+            startDeferredByRestore = true
+            appendLog("server start deferred: restoring")
+            return
+        }
         if UserDefaults.standard.bool(forKey: "SBSNKeepScreenAwake") {
             keepsScreenAwake = true
         }
@@ -239,6 +273,12 @@ final class CameraTransferTestModel {
         server.onLog = { [weak self] line in
             Task { @MainActor in self?.appendLog(line) }
         }
+        server.onEvent = { [weak self] event in
+            Task { @MainActor in self?.handle(event) }
+        }
+        hasCameraLoggedIn = false
+        openCameraConnections = 0
+        setCameraLink(.waiting)
         server.onFileReceived = { [weak self] file in
             let photo = Self.makeReceivedPhoto(from: file, root: originals)
             Task { @MainActor in self?.append(photo) }
@@ -301,6 +341,36 @@ final class CameraTransferTestModel {
         isRunning = false
         isSuspendedForBackground = true
         appendLog("server suspended: app in background")
+    }
+
+    private func handle(_ event: FTPServer.Event) {
+        switch event {
+        case .connections(let count):
+            openCameraConnections = count
+            if count == 0 {
+                // 로그인 실패는 카메라 설정을 고칠 때까지 보여 준다.
+                if cameraLink != .loginRejected {
+                    setCameraLink(hasCameraLoggedIn ? .closed : .waiting)
+                }
+            } else if [.waiting, .closed].contains(cameraLink) {
+                setCameraLink(.connecting)
+            }
+        case .loggedIn:
+            hasCameraLoggedIn = true
+            setCameraLink(.connected)
+        case .loginRejected:
+            setCameraLink(.loginRejected)
+        case .receiving(let fileName):
+            setCameraLink(.receiving(fileName))
+        case .discarded(let fileName):
+            setCameraLink(.interrupted(fileName))
+        }
+    }
+
+    private func setCameraLink(_ link: CameraLink) {
+        guard link != cameraLink else { return }
+        cameraLink = link
+        cameraLinkChangedAt = Date()
     }
 
     func resumeFromBackground() {
@@ -387,6 +457,9 @@ final class CameraTransferTestModel {
     }
 
     private func append(_ photo: ReceivedPhoto) {
+        if case .receiving = cameraLink {
+            setCameraLink(openCameraConnections > 0 ? .connected : .closed)
+        }
         // 카메라가 같은 파일을 다시 보내면(전송 실패 뒤 재시도) 이미 올린 것을 다시 올리지 않는다.
         // 다른 사진이 같은 이름으로 오는 경우는 FTP 서버가 이름을 바꿔 받는다.
         if let existing = photos.first(where: { $0.relativePath == photo.relativePath }), existing.byteCount == photo.byteCount {
@@ -690,6 +763,22 @@ final class CameraTransferTestModel {
 
     // MARK: - 복원
 
+    /// 복원할 모델을 만들자마자 부른다. 복원이 받는 중이던 임시 파일을 정리할 때까지 서버를 열지 않는다.
+    func holdServerUntilRestoreScan() {
+        holdsServerForRestore = true
+    }
+
+    private func releaseServerHold() {
+        guard holdsServerForRestore else { return }
+        holdsServerForRestore = false
+        if startDeferredByRestore {
+            startDeferredByRestore = false
+            if UIApplication.shared.applicationState != .background {
+                start()
+            }
+        }
+    }
+
     /// 앱을 다시 켰을 때 티켓 폴더의 원본과 서버의 사진 문서로 상태를 되살린다.
     /// `headless`(알림으로 백그라운드 실행)면 깨어 있는 시간이 짧으므로 썸네일·EXIF·미리보기 재업로드는 생략한다.
     /// 끝나면 찜·구매 리스너를 바로 붙이고 미완료 업로드를 이어 간다. 카메라 수신은 세션이 따로 시작한다.
@@ -697,7 +786,10 @@ final class CameraTransferTestModel {
         let originals = ticketDirectory.appending(path: "originals", directoryHint: .isDirectory)
         let received = Self.readReceivedCSV(at: ticketDirectory.appending(path: "received.csv"))
         var restored: [ReceivedPhoto] = []
-        for (url, values) in Self.scanOriginals(originals) {
+        let scanned = Self.scanOriginals(originals)
+        // 임시 파일 정리가 끝났으니 카메라 수신을 열어도 된다(사진 목록·서버 기록 복원은 이어서 한다).
+        releaseServerHold()
+        for (url, values) in scanned {
             let byteCount = values.fileSize ?? 0
             let relative = url.standardizedFileURL.pathComponents.dropFirst(originals.standardizedFileURL.pathComponents.count).joined(separator: "/")
             let record = received[relative]

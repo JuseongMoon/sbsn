@@ -56,6 +56,7 @@ final class PhotographerSession {
     @ObservationIgnored private var attachingTicketID: String?
     @ObservationIgnored private var deliveryWatch: Task<Void, Never>?
     @ObservationIgnored private var heartbeat: Task<Void, Never>?
+    @ObservationIgnored private var deviceLog: DeviceConditionLog?
 
     private init() {
         displayName = UserDefaults.standard.string(forKey: Self.displayNameKey) ?? ""
@@ -80,6 +81,11 @@ final class PhotographerSession {
             self?.handleLocation(point)
         }
         startHeartbeat()
+        let deviceLog = DeviceConditionLog { [unowned self] in
+            DeviceConditionLog.Context(isAvailable: isAvailable, phase: ticket.map { "\($0.phase)" } ?? "none")
+        }
+        deviceLog.start()
+        self.deviceLog = deviceLog
         restoration = Task { [weak self] in
             await self?.restoreIfNeeded()
         }
@@ -214,6 +220,8 @@ final class PhotographerSession {
             let model = makeDelivery(for: record)
             if restoring {
                 if CameraTransferTestModel.hasLocalFiles(ticketID: record.id) {
+                    // 복원 Task가 실제로 돌기 전에 다른 경로(티켓 리스너, 앱 활성화)가 서버를 열지 못하게 한다.
+                    model.holdServerUntilRestoreScan()
                     let headless = UIApplication.shared.applicationState == .background
                     deliveryRestoration = Task {
                         await model.restore(headless: headless)

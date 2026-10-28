@@ -3,6 +3,14 @@ import {getFirestore} from "firebase-admin/firestore";
 import {getMessaging, type TokenMessage} from "firebase-admin/messaging";
 import {logger, setGlobalOptions} from "firebase-functions";
 import {onDocumentCreated, onDocumentUpdated} from "firebase-functions/firestore";
+import {
+  customerChatMessage,
+  customerTicketChange,
+  customerTicketMessage,
+  isPhotographerMessage,
+  isPurchasedPhotoReady,
+  photoReadyMessage,
+} from "./customer-notification.js";
 import {isCustomerMatch, matchMessage} from "./match-notification.js";
 import {isCustomerMessage, messageMessage} from "./message-notification.js";
 import {isNewPurchase, purchaseMessage} from "./purchase-notification.js";
@@ -18,6 +26,16 @@ async function photographerToken(photographerUid: string, context: Record<string
   const token = (await getFirestore().doc(`photographers/${photographerUid}`).get()).get("fcmToken");
   if (typeof token !== "string") {
     logger.warn("작가 기기 토큰이 없어 알리지 않음", {...context, photographerUid});
+    return undefined;
+  }
+  return token;
+}
+
+/** 고객 기기 토큰. 고객 앱이 알림을 허용하지 않았거나 아직 등록하지 않았으면 없다. */
+async function customerToken(customerUid: string, context: Record<string, unknown>): Promise<string | undefined> {
+  const token = (await getFirestore().doc(`customerDevices/${customerUid}`).get()).get("fcmToken");
+  if (typeof token !== "string") {
+    logger.info("고객 기기 토큰이 없어 알리지 않음", {...context, customerUid});
     return undefined;
   }
   return token;
@@ -93,5 +111,58 @@ export const notifyPhotographerOfPurchase = onDocumentUpdated({
   const token = await photographerToken(photographerUid, {ticketId, photoId});
   if (token) {
     await send(purchaseMessage(token, ticketId, photoId, after?.fullresUploadedAt != null), "구매 알림", {ticketId, photoId});
+  }
+});
+
+/** 작가가 채팅을 보내면 고객 기기에 배너를 띄운다. 고객이 만나러 걸어가며 앱을 내려도 약속이 이어지게 한다. */
+export const notifyCustomerOfMessage = onDocumentCreated({
+  document: "tickets/{ticketId}/messages/{messageId}",
+  serviceAccount,
+}, async (event) => {
+  const {ticketId, messageId} = event.params;
+  const message = event.data?.data();
+  const ticket = (await getFirestore().doc(`tickets/${ticketId}`).get()).data();
+  if (!isPhotographerMessage(message, ticket?.photographerUid) || typeof ticket?.customerUid !== "string") {
+    return;
+  }
+  const token = await customerToken(ticket.customerUid, {ticketId, messageId});
+  if (token) {
+    await send(customerChatMessage(token, ticketId, ticket.photographerDisplayName, message.text), "고객 채팅 알림", {ticketId, messageId});
+  }
+});
+
+/** 작가가 먼저 시작하거나 취소했을 때, 촬영이 끝났을 때 고객에게 알린다. */
+export const notifyCustomerOfTicketChange = onDocumentUpdated({
+  document: "tickets/{ticketId}",
+  serviceAccount,
+}, async (event) => {
+  const {ticketId} = event.params;
+  const after = event.data?.after.data();
+  const change = customerTicketChange(event.data?.before.data(), after);
+  if (!change || typeof after?.customerUid !== "string") {
+    return;
+  }
+  const token = await customerToken(after.customerUid, {ticketId, change});
+  if (token) {
+    await send(customerTicketMessage(token, ticketId, change), "고객 티켓 알림", {ticketId, change});
+  }
+});
+
+/** 산 사진의 고화질본이 나중에 올라오면 고객에게 알린다. 고객 앱은 열릴 때 사진 앱에 저장한다. */
+export const notifyCustomerOfPurchasedPhoto = onDocumentUpdated({
+  document: "tickets/{ticketId}/photos/{photoId}",
+  serviceAccount,
+}, async (event) => {
+  const {ticketId, photoId} = event.params;
+  if (!isPurchasedPhotoReady(event.data?.before.data(), event.data?.after.data())) {
+    return;
+  }
+  const customerUid = (await getFirestore().doc(`tickets/${ticketId}`).get()).get("customerUid");
+  if (typeof customerUid !== "string") {
+    return;
+  }
+  const token = await customerToken(customerUid, {ticketId, photoId});
+  if (token) {
+    await send(photoReadyMessage(token, ticketId, photoId), "고객 사진 준비 알림", {ticketId, photoId});
   }
 });

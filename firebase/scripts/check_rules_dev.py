@@ -239,6 +239,13 @@ expect("A가 자기 기기 토큰 등록", commit(a, w(f"photographers/{a_uid}",
 expect("B가 A의 기기 토큰 읽기", read(b, f"photographers/{a_uid}"), False)
 expect("A가 기기 문서에 다른 항목 쓰기", commit(a, w(f"photographers/{a_uid}", {**device, "role": S("admin")})), False)
 
+print("--- 고객 기기 토큰 ---")
+expect("C가 자기 기기 토큰 등록", commit(c, w(f"customerDevices/{c_uid}", device)), True)
+expect("C가 자기 기기 토큰 읽기", read(c, f"customerDevices/{c_uid}"), True)
+expect("A(작가)가 C의 기기 토큰 읽기", read(a, f"customerDevices/{c_uid}"), False)
+expect("D가 C의 기기 토큰 덮어쓰기", commit(d, w(f"customerDevices/{c_uid}", device)), False)
+expect("C가 기기 문서에 다른 항목(activeTicketId) 쓰기", commit(c, w(f"customerDevices/{c_uid}", {**device, "activeTicketId": S("T")})), False)
+
 print("--- 작가 공개 상태 ---")
 expect("A가 자기 상태 발행", set_presence(a, presence_a, presence_fields()), True)
 expect("B가 A의 상태 쓰기", set_presence(b, presence_a, presence_fields("가짜")), False)
@@ -404,7 +411,8 @@ for ticket in (T1, T2, T3):
                 "messages/m1"):
         admin_delete(f"tickets/{ticket}/{sub}")
     cleanup.append(admin_delete(f"tickets/{ticket}"))
-cleanup += [admin_delete(path) for path in (presence_a, presence_e, f"customers/{c_uid}", f"customers/{d_uid}", f"photographers/{a_uid}")]
+cleanup += [admin_delete(path) for path in (presence_a, presence_e, f"customers/{c_uid}", f"customers/{d_uid}", f"photographers/{a_uid}",
+                                               f"customerDevices/{c_uid}")]
 if not EMULATOR:
     cleanup.append(call("POST", f"https://identitytoolkit.googleapis.com/v1/projects/{PROJECT}/accounts:batchDelete",
                         {"localIds": [a_uid, b_uid, c_uid, d_uid, e_uid], "force": True}, ADMIN_HEADERS)[0])

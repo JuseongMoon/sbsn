@@ -30,6 +30,9 @@ struct ShootingModeView: View {
                     .font(.title3.monospacedDigit())
                     .contentTransition(.numericText())
 
+                CameraLinkLabel(link: model.cameraLink, since: model.cameraLinkChangedAt, showsHint: false)
+                    .font(.subheadline)
+
                 if let last = model.photos.last {
                     VStack(spacing: 4) {
                         Text(last.relativePath)

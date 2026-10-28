@@ -11,6 +11,8 @@ struct PhotographerTicketView: View {
     @State private var confirmsCancel = false
     @State private var confirmsEnd = false
     @State private var isWorking = false
+    /// 촬영 중에는 홈으로 나갈 수 없어, 현장에서 업로드 설정을 바꿔 비교할 수 있게 측정 항목을 이 화면에서 켠다.
+    @State private var showsMeasurements = false
 
     var body: some View {
         Group {
@@ -48,12 +50,14 @@ struct PhotographerTicketView: View {
             meeting(ticket)
         case .shooting, .ended:
             if let delivery = session.delivery {
-                CameraTransferTestView(model: delivery)
+                CameraTransferTestView(model: delivery, showsMeasurements: showsMeasurements)
                     .safeAreaInset(edge: .bottom) {
                         shootingBar(ticket)
                     }
                     .toolbar {
                         Button("채팅", systemImage: "bubble.left.and.bubble.right") { showsChat = true }
+                        Toggle("측정", systemImage: "gauge.with.dots.needle.33percent", isOn: $showsMeasurements)
+                            .accessibilityIdentifier("photographer.measurements")
                     }
             } else {
                 ContentUnavailableView("전달이 끝났습니다", systemImage: "checkmark.circle")

@@ -67,4 +67,30 @@ struct TicketRecordTests {
         #expect(record.role(of: "X") == nil)
         #expect(record.uid(of: .photographer) == "P")
     }
+    @Test func silenceStartsAfterGraceWithoutAcknowledgement() {
+        let matched = ticket()
+        #expect(PhotographerSilence.of(matched, photographerLocationUpdatedAt: nil, at: t0.addingTimeInterval(119)) == nil)
+        #expect(PhotographerSilence.of(matched, photographerLocationUpdatedAt: nil, at: t0.addingTimeInterval(120)) == .notAcknowledged(since: t0))
+    }
+
+    @Test func silenceFollowsPhotographerLocation() {
+        var acknowledged = ticket()
+        acknowledged.photographerAckAt = t0.addingTimeInterval(1)
+        // 받았지만 위치가 아직 없으면 받은 시각부터 센다.
+        #expect(PhotographerSilence.of(acknowledged, photographerLocationUpdatedAt: nil, at: t0.addingTimeInterval(120)) == nil)
+        #expect(PhotographerSilence.of(acknowledged, photographerLocationUpdatedAt: nil, at: t0.addingTimeInterval(181))
+            == .locationStale(since: t0.addingTimeInterval(1)))
+        // 위치가 오면 받음 표시가 없어도 위치 시각으로 판단한다.
+        let located = t0.addingTimeInterval(300)
+        #expect(PhotographerSilence.of(ticket(), photographerLocationUpdatedAt: located, at: located.addingTimeInterval(179)) == nil)
+        #expect(PhotographerSilence.of(ticket(), photographerLocationUpdatedAt: located, at: located.addingTimeInterval(180)) == .locationStale(since: located))
+    }
+
+    @Test func silenceIsOnlyForMeetup() {
+        let late = t0.addingTimeInterval(3_600)
+        #expect(PhotographerSilence.of(ticket(customerStarted: true), photographerLocationUpdatedAt: nil, at: late) == .notAcknowledged(since: t0))
+        #expect(PhotographerSilence.of(ticket(customerStarted: true, photographerStarted: true), photographerLocationUpdatedAt: nil, at: late) == nil)
+        #expect(PhotographerSilence.of(ticket(cancelled: true), photographerLocationUpdatedAt: nil, at: late) == nil)
+        #expect(PhotographerSilence.of(ticket(customerStarted: true, photographerStarted: true, ended: true), photographerLocationUpdatedAt: nil, at: late) == nil)
+    }
 }

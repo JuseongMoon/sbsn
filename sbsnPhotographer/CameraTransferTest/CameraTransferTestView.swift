@@ -17,6 +17,9 @@ struct CameraTransferTestView: View {
         List {
             Section {
                 LabeledContent("상태", value: model.isRunning ? "수신 대기 중" : "중지됨")
+                if model.isRunning {
+                    CameraLinkLabel(link: model.cameraLink, since: model.cameraLinkChangedAt)
+                }
                 if showsMeasurements {
                     LabeledContent("촬영 티켓", value: model.ticketID)
                 }
@@ -149,6 +152,80 @@ struct CameraTransferTestView: View {
         case .failed(let message): "등록 실패: \(message)"
         }
         return session.isAlertAuthorized == false ? "\(registration) · 배너 꺼짐" : registration
+    }
+}
+
+/// 카메라 연결 상태 한 줄. 촬영 화면과 촬영 모드(검은 화면)가 같이 쓴다.
+struct CameraLinkLabel: View {
+    let link: CameraTransferTestModel.CameraLink
+    let since: Date
+    var showsHint = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Label {
+                if link == .closed {
+                    // 초 단위로 바뀌는 상대 시간은 촬영 모드(검은 화면)에서 계속 깜빡이므로 닫힌 시각을 보여 준다.
+                    Text("카메라가 연결을 닫음 · \(since, style: .time)")
+                } else {
+                    Text(title)
+                }
+            } icon: {
+                Image(systemName: systemImage)
+            }
+            .foregroundStyle(tint)
+            if showsHint, let hint {
+                Text(hint)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("camera.link")
+    }
+
+    private var title: String {
+        switch link {
+        case .waiting: "카메라 연결 기다리는 중"
+        case .connecting: "카메라 접속함 · 로그인 중"
+        case .loginRejected: "카메라 로그인 실패"
+        case .connected: "카메라 연결됨"
+        case .receiving(let fileName): "받는 중 · \(fileName)"
+        case .interrupted(let fileName): "전송 끊김 · \(fileName)"
+        case .closed: "카메라가 연결을 닫음"
+        }
+    }
+
+    private var hint: String? {
+        switch link {
+        case .waiting: "카메라를 이 폰의 핫스팟에 연결하고 FTP 전송을 켜 주세요. 서버 설정값은 아래에 있습니다."
+        case .loginRejected: "카메라 FTP 서버 설정의 사용자 이름과 비밀번호를 아래 값으로 맞춰 주세요."
+        case .interrupted: "받던 사진이 끝까지 오지 않아 버렸습니다. 카메라의 전송 결과를 확인해 주세요."
+        case .closed: "사진을 다 보내면 연결을 닫는 카메라도 있습니다."
+        case .connecting, .connected, .receiving: nil
+        }
+    }
+
+    private var systemImage: String {
+        switch link {
+        case .waiting: "camera.badge.ellipsis"
+        case .connecting: "dot.radiowaves.left.and.right"
+        case .loginRejected: "lock.fill"
+        case .connected: "checkmark.circle.fill"
+        case .receiving: "arrow.down.circle.fill"
+        case .interrupted: "exclamationmark.triangle.fill"
+        case .closed: "pause.circle"
+        }
+    }
+
+    private var tint: Color {
+        switch link {
+        case .waiting, .closed: .secondary
+        case .connecting: .blue
+        case .loginRejected: .red
+        case .connected, .receiving: .green
+        case .interrupted: .orange
+        }
     }
 }
 

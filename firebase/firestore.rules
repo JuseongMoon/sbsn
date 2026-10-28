@@ -51,6 +51,17 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // 고객 기기의 푸시 토큰. 서버 함수가 작가 메시지, 작가의 시작·취소, 촬영 종료, 나중에 올라온 구매 사진을 알린다. 본인만 읽고 쓴다.
+    // 고객의 매칭 잠금(customers/{uid})은 티켓 트랜잭션 규칙에 묶여 있어 따로 둔다.
+    match /customerDevices/{uid} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow create, update: if isSignedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['fcmToken', 'fcmTokenUpdatedAt'])
+        && request.resource.data.fcmToken is string
+        && request.resource.data.fcmToken.size() < 4096;
+      allow delete: if false;
+    }
+
     // 작가의 공개 상태. 고객 지도가 읽는다. 위치는 작가 앱이 100m 격자로 뭉개서 올린다.
     // activeTicketId는 매칭 잠금이다: 고객이 티켓을 만드는 트랜잭션에서만 채우고, 취소 트랜잭션이나 작가 본인만 비운다.
     match /photographerPresence/{uid} {

@@ -1,5 +1,5 @@
 import type {TokenMessage} from "firebase-admin/messaging";
-import {photographerMessage} from "./notifications.js";
+import {deviceAlertMessage} from "./notifications.js";
 
 /** 채팅 문서(`tickets/{ticketId}/messages/{messageId}`)에서 알림이 보는 항목 */
 export interface MessageFields {
@@ -20,12 +20,13 @@ export function previewText(text: string, limit = 100): string {
 
 /** 고객 메시지를 작가 기기로 보내는 알림. 매칭 알림 뒤 작가가 앱을 내려도 만남 약속이 이어지게 한다. */
 export function messageMessage(token: string, ticketId: string, text: string): TokenMessage {
-  return photographerMessage({
+  return deviceAlertMessage({
     token,
     title: "고객 메시지",
     body: previewText(text),
     data: {type: "message", ticketId},
     collapseId: `${ticketId}:message`,
+    androidChannelId: "message",
     threadId: ticketId,
     wakesApp: false,
   });

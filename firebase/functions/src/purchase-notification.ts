@@ -1,5 +1,5 @@
 import type {TokenMessage} from "firebase-admin/messaging";
-import {photographerMessage} from "./notifications.js";
+import {deviceAlertMessage} from "./notifications.js";
 
 /** 사진 문서(`tickets/{ticketId}/photos/{원본 파일명}`)에서 구매 알림이 보는 항목 */
 export interface PhotoFields {
@@ -20,7 +20,7 @@ export function isNewPurchase(before: PhotoFields | undefined, after: PhotoField
  * 그래서 작가가 보고 앱을 열 수 있게 문구를 함께 보낸다.
  */
 export function purchaseMessage(token: string, ticketId: string, fileName: string, hasFullResolution: boolean): TokenMessage {
-  return photographerMessage({
+  return deviceAlertMessage({
     token,
     title: "사진 구매",
     body: hasFullResolution
@@ -28,6 +28,7 @@ export function purchaseMessage(token: string, ticketId: string, fileName: strin
       : `${fileName} · 고화질본을 올립니다. 진행되지 않으면 앱을 열어 주세요.`,
     data: {type: "purchase", ticketId, fileName},
     collapseId: `${ticketId}:${fileName}`,
+    androidChannelId: "purchase",
     threadId: ticketId,
     wakesApp: true,
   });

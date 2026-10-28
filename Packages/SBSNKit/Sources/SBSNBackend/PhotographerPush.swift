@@ -44,14 +44,7 @@ public enum PhotographerPush {
     /// APNs 기기 토큰을 FCM에 넘기고, 받은 FCM 토큰을 작가 문서에 저장한다. 앱을 켤 때마다 불러 토큰이 바뀌어도 따라간다.
     @MainActor
     public static func register(apnsToken: Data) async throws {
-        let messaging = Messaging.messaging()
-        messaging.apnsToken = apnsToken
-        let token = try await messaging.token()
-        let uid = try await Backend.signedInUserID()
-        try await Firestore.firestore().collection("photographers").document(uid).setData([
-            "fcmToken": token,
-            "fcmTokenUpdatedAt": FieldValue.serverTimestamp(),
-        ])
+        try await PushToken.register(apnsToken: apnsToken, in: "photographers")
     }
 
     /// 원격 알림 내용이 구매 알림이면 구매 정보를 꺼낸다. 키는 서버 함수의 `purchaseMessage`와 맞춘다.

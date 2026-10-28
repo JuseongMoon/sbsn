@@ -117,3 +117,31 @@ public enum TicketPhase: Sendable, Equatable {
         }
     }
 }
+
+/// 만나기 단계에서 작가 쪽이 조용한 이유. 고객 화면이 "작가 응답 없음"을 안내하는 데 쓴다.
+///
+/// 작가 앱은 살아 있는 동안 만나기 단계에서 15초마다 티켓에 위치를 올린다(폰이 잠겨 있어도 백그라운드 위치로 산다).
+/// 그래서 확정 뒤 받음 표시가 없거나 위치가 몇 분째 끊기면 작가 폰이 꺼졌거나 앱이 종료됐을 수 있다.
+public enum PhotographerSilence: Sendable, Equatable {
+    /// 확정 뒤 `acknowledgementGrace`가 지나도록 작가 앱이 티켓을 받지 않았다.
+    case notAcknowledged(since: Date)
+    /// 작가 위치가 `locationGrace` 넘게 갱신되지 않았다(받은 뒤 위치가 한 번도 없으면 받은 시각부터 센다).
+    case locationStale(since: Date)
+
+    public static let acknowledgementGrace: TimeInterval = 2 * 60
+    public static let locationGrace: TimeInterval = 3 * 60
+
+    public static func of(_ ticket: TicketRecord, photographerLocationUpdatedAt: Date?, at now: Date) -> PhotographerSilence? {
+        switch ticket.phase {
+        case .matched, .waitingForPhotographer, .waitingForCustomer: break
+        case .shooting, .ended, .cancelled: return nil
+        }
+        if let updatedAt = photographerLocationUpdatedAt {
+            return now.timeIntervalSince(updatedAt) >= locationGrace ? .locationStale(since: updatedAt) : nil
+        }
+        if let acknowledgedAt = ticket.photographerAckAt {
+            return now.timeIntervalSince(acknowledgedAt) >= locationGrace ? .locationStale(since: acknowledgedAt) : nil
+        }
+        return now.timeIntervalSince(ticket.createdAt) >= acknowledgementGrace ? .notAcknowledged(since: ticket.createdAt) : nil
+    }
+}

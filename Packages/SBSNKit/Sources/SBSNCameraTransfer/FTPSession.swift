@@ -112,9 +112,11 @@ final class FTPSession: @unchecked Sendable {
         case "PASS":
             if let credentials = server.credentials,
                pendingUser != credentials.user || argument != credentials.password {
+                server.notify(.loginRejected)
                 reply(530, "Login incorrect")
             } else {
                 isAuthenticated = true
+                server.notify(.loggedIn)
                 reply(230, "Logged in")
             }
         case "AUTH":
@@ -355,6 +357,7 @@ final class FTPSession: @unchecked Sendable {
             let handle = try FileHandle(forWritingTo: writeURL)
             if append { try handle.seekToEnd() }
             reply(150, "Opening data connection for \(url.lastPathComponent)")
+            server.notify(.receiving(url.lastPathComponent))
             let transfer = Transfer(handle: handle, destination: url, partial: partialURL, startedAt: Date())
             withDataConnection { [weak self] connection in
                 self?.receiveFile(from: connection, transfer: transfer, byteCount: 0)
@@ -460,6 +463,7 @@ final class FTPSession: @unchecked Sendable {
     }
 
     private func discard(_ transfer: Transfer) {
+        server.notify(.discarded(transfer.destination.lastPathComponent))
         try? transfer.handle.close()
         closeData()
         if let partial = transfer.partial {
