@@ -47,6 +47,8 @@ final class PhotographerSession {
     @ObservationIgnored private var presenceTask: Task<Void, Never>?
     @ObservationIgnored private var ticketTask: Task<Void, Never>?
     @ObservationIgnored private var restoration: Task<Void, Never>?
+    /// 전달 엔진이 로컬 폴더와 서버 기록으로 사진 목록을 되살리는 작업. 티켓을 붙이는 `restoration` 안에서 시작된다.
+    @ObservationIgnored private var deliveryRestoration: Task<Void, Never>?
     @ObservationIgnored private var lifecycleObservers: [any NSObjectProtocol] = []
     @ObservationIgnored private var lastPublishedPoint: GeoPoint?
     @ObservationIgnored private var lastPublishedAt: Date?
@@ -213,7 +215,7 @@ final class PhotographerSession {
             if restoring {
                 if CameraTransferTestModel.hasLocalFiles(ticketID: record.id) {
                     let headless = UIApplication.shared.applicationState == .background
-                    Task {
+                    deliveryRestoration = Task {
                         await model.restore(headless: headless)
                         if record.phase == .shooting, UIApplication.shared.applicationState != .background {
                             model.start()
@@ -455,11 +457,18 @@ final class PhotographerSession {
     }
 
     /// 복원이 끝나기를 잠깐 기다린다. 알림으로 깨어 있는 시간이 짧아 5초만 기다리고 넘어간다.
+    /// 티켓을 붙인 뒤 전달 엔진이 사진 목록을 되살리는 것까지 기다린다. 목록이 비어 있는 채로 구매를 처리하면
+    /// 기다릴 사진이 없어 알림 처리가 바로 끝나고, iOS가 업로드 도중 앱을 멈출 수 있다(실기기에서 두 작업이 0.1초 차이였다).
     /// (기다리기를 그만둬도 복원 자체는 계속된다.)
     private func waitForRestoration() async {
-        guard let restoration else { return }
+        guard restoration != nil else { return }
+        // 전달 엔진의 복원은 티켓을 붙이는 복원 안에서 시작되므로 차례로 기다린다.
+        let restored = Task { [weak self] in
+            await self?.restoration?.value
+            await self?.deliveryRestoration?.value
+        }
         await withTaskGroup(of: Void.self) { group in
-            group.addTask { await restoration.value }
+            group.addTask { await restored.value }
             group.addTask { try? await Task.sleep(for: .seconds(5)) }
             await group.next()
             group.cancelAll()

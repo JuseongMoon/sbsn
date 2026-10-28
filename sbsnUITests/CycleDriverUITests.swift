@@ -93,6 +93,22 @@ final class CycleDriverUITests: XCTestCase {
         attachScreenshot("P5 종료", app: app)
     }
 
+    /// 작가 폰에 `SBSN_BANNER_TEXT`가 든 알림 배너가 뜨기를 기다려 배너만 찍는다(홈 화면·다른 앱 알림은 찍지 않는다).
+    /// 고객 단계보다 먼저 띄워 두고, 고객 쪽에서 확정·채팅·구매를 한다.
+    func test_P6_photographerCapturesBanner() throws {
+        let environment = ProcessInfo.processInfo.environment
+        let text = try XCTUnwrap(environment["SBSN_BANNER_TEXT"])
+        let timeout = TimeInterval(environment["SBSN_BANNER_TIMEOUT"] ?? "") ?? 180
+        let banner = springboard.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
+        print("SBSN 배너 기다림 \(text)")
+        XCTAssertTrue(banner.waitForExistence(timeout: timeout), "배너가 뜨지 않음: \(text)")
+        print("SBSN 배너 \(Date().ISO8601Format(.iso8601.time(includingFractionalSeconds: true))) \(banner.label)")
+        let attachment = XCTAttachment(screenshot: banner.screenshot())
+        attachment.name = "P6 배너"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     // MARK: - 고객
 
     /// 지도에서 작가를 골라 확정하고, 작가 앱이 받았다는 표시를 기다린다.
@@ -228,6 +244,57 @@ final class CycleDriverUITests: XCTestCase {
         print("SBSN 종료 뒤 \(fileName) 구매 버튼 \(app.buttons["photo.purchase"].exists ? "있음" : "없음")")
         attachScreenshot("C7 종료 뒤 \(fileName)", app: app)
         app.navigationBars.buttons.element(boundBy: 0).tap()
+    }
+
+    /// 10분 넘게 갱신이 없는 작가가 지도에서 빠지는지 본다. 관리자가 갱신 시각만 다른 공개 상태 셋을 미리 넣어 둔다.
+    /// FRESH(방금)는 계속 보이고, STALE(곧 10분)은 보이다가 사라지고, GONE(이미 10분 넘음)은 처음부터 없어야 한다.
+    func test_C10_customerSeesStalePhotographerHidden() throws {
+        let environment = ProcessInfo.processInfo.environment
+        let fresh = try XCTUnwrap(environment["SBSN_FRESH_NAME"])
+        let stale = try XCTUnwrap(environment["SBSN_STALE_NAME"])
+        let gone = try XCTUnwrap(environment["SBSN_GONE_NAME"])
+        let app = customerApp
+        // 지도는 작가가 처음 보일 때 한 번만 영역을 맞추므로, 새로 띄워 시험 작가들이 화면 안에 오게 한다.
+        app.terminate()
+        app.activate()
+        for title in ["새 촬영 찾기", "지도로 돌아가기"] where app.buttons[title].waitForExistence(timeout: 3) {
+            app.buttons[title].tap()
+        }
+        func marker(_ name: String) -> XCUIElement {
+            app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ OR label BEGINSWITH %@", "marker.\(name)", name)).firstMatch
+        }
+        XCTAssertTrue(waitUntil(timeout: 60) { marker(fresh).exists && marker(stale).exists }, "시험 작가가 지도에 보이지 않음")
+        print("SBSN 둘 다 보임 \(Date().ISO8601Format(.iso8601.time(includingFractionalSeconds: true)))")
+        XCTAssertFalse(marker(gone).exists, "이미 10분 넘은 작가가 보임")
+        attachScreenshot("C10 숨기기 전", app: app)
+
+        XCTAssertTrue(waitUntil(timeout: 180) { !marker(stale).exists }, "오래된 작가가 사라지지 않음")
+        print("SBSN 오래된 작가 사라짐 \(Date().ISO8601Format(.iso8601.time(includingFractionalSeconds: true)))")
+        XCTAssertTrue(marker(fresh).exists, "방금 갱신한 작가까지 사라짐")
+        XCTAssertFalse(marker(gone).exists, "이미 10분 넘은 작가가 보임")
+        attachScreenshot("C10 숨긴 뒤", app: app)
+    }
+
+    /// 사용자가 지도를 움직인 뒤에는 작가가 새로 보여도 지도를 다시 맞추지 않는지 본다.
+    /// 지도를 옮긴 뒤 45초 안에 관리자가 멀리 있는 작가(`SBSN_LATE_NAME`)를 넣는다. 그 작가는 화면 밖에 남아야 한다.
+    func test_C11_customerMovedMapStaysPut() throws {
+        let late = try XCTUnwrap(ProcessInfo.processInfo.environment["SBSN_LATE_NAME"])
+        let app = customerApp
+        app.terminate()
+        app.activate()
+        let marker = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ OR label BEGINSWITH %@", "marker.\(photographerName)", photographerName)).firstMatch
+        XCTAssertTrue(marker.waitForExistence(timeout: 60), "지도에 작가가 보이지 않음")
+        let map = app.maps.firstMatch
+        // 마커는 가운데에 있으므로 아래쪽을 끌어 마커를 누르지 않게 한다.
+        map.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.75))
+            .press(forDuration: 0.1, thenDragTo: map.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.75)))
+        print("SBSN 지도 옮김 \(Date().ISO8601Format(.iso8601.time(includingFractionalSeconds: true)))")
+        attachScreenshot("C11 옮긴 뒤", app: app)
+        RunLoop.current.run(until: Date().addingTimeInterval(45))
+        attachScreenshot("C11 45초 뒤", app: app)
+        let lateMarker = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ OR label BEGINSWITH %@", "marker.\(late)", late)).firstMatch
+        XCTAssertFalse(lateMarker.exists, "옮긴 지도를 새 작가에 맞춰 다시 움직임")
+        XCTAssertTrue(marker.exists, "원래 작가가 화면에서 사라짐")
     }
 
     /// 진단: 고객 앱 화면 구조를 출력한다.

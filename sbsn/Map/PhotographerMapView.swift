@@ -82,9 +82,12 @@ struct PhotographerMapView: View {
                 if let selectedUid, !ids.contains(selectedUid) {
                     self.selectedUid = nil
                 }
-                // 작가가 처음 보일 때 한 번, 작가들이 모두 보이게 맞춘다. 기본 위치(서울 시청)에 두면 멀리 있는
-                // 작가 마커가 화면 밖에 남는다(실기기에서 확인). 내 위치를 못 잡으면 `positionedByUser`도 믿을 수 없어 따로 기억한다.
-                if !ids.isEmpty, !hasFramedPhotographers, let region = Self.region(covering: markers.map(\.coordinate)) {
+                // 작가가 처음 보일 때, 그리고 사용자가 지도를 움직이기 전까지는 보이는 작가가 바뀔 때마다 작가들이 모두 보이게 맞춘다.
+                // 기본 위치(서울 시청)에 두면 멀리 있는 작가 마커가 화면 밖에 남는다. 앱을 다시 열면 첫 목록이 기기 캐시에서 와서
+                // 이미 떠난 작가에게 맞춰진 뒤 서버 목록의 작가가 화면 밖에 남기도 한다(둘 다 실기기에서 확인).
+                // 내 위치를 못 잡으면 처음의 `positionedByUser`도 믿을 수 없어 첫 맞춤은 따로 기억한다.
+                if !ids.isEmpty, !hasFramedPhotographers || !position.positionedByUser,
+                   let region = Self.region(covering: markers.map(\.coordinate)) {
                     hasFramedPhotographers = true
                     position = .region(region)
                 }
