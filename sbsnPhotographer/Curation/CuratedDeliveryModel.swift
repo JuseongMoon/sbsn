@@ -42,6 +42,8 @@ final class CuratedDeliveryModel: Identifiable {
         let contentKey: String
         var thumbnail: UIImage?
         var isOutsideShootWindow = false
+        /// 촬영 위치가 지워진 채 들어왔다(GPS 태그는 있는데 값이 0/0이거나 형식이 잘못됨, I008). 고화질본은 받은 그대로 옮긴다.
+        var locationRemoved = false
         /// 미리보기·고화질본 파일을 이 기기에서 만들었는지
         var isRendered = false
         var preview = Step.waiting
@@ -121,6 +123,8 @@ final class CuratedDeliveryModel: Identifiable {
 
     var uploadedCount: Int { photos.filter(\.isUploaded).count }
     var allUploaded: Bool { !photos.isEmpty && photos.allSatisfy(\.isUploaded) }
+    /// 위치가 지워진 채 들어온 사진 수(I008 안내)
+    var locationRemovedCount: Int { photos.filter(\.locationRemoved).count }
     var isPublished: Bool { publishState.isPublished }
     var canEditSelection: Bool { !isPublished && publishState != .publishing }
     /// 공개 버튼을 막는 이유(장수). nil이면 장수는 맞다.
@@ -184,10 +188,15 @@ final class CuratedDeliveryModel: Identifiable {
                           width: inspection.width, height: inspection.height, assetIdentifier: assetIdentifier, contentKey: contentKey)
         photo.thumbnail = Self.thumbnail(of: destination)
         photo.isOutsideShootWindow = PhotoCuration.isOutsideShootWindow(capturedAt: inspection.capturedAt, shootStartedAt: shootStartedAt)
+        photo.locationRemoved = inspection.location == .removed
         photos.append(photo)
         // 기본 순서는 촬영 시각순이다(작가가 끌어서 바꿀 수 있다). 시각이 없는 사진은 고른 순서대로 뒤에 둔다.
         sortByCaptureTimeIfUntouched()
-        appendLog("added \(photoID) \(fileName ?? "-") \(inspection.width)x\(inspection.height)")
+        appendLog("added \(photoID) \(fileName ?? "-") \(inspection.width)x\(inspection.height) location=\(inspection.location.rawValue)")
+        if photo.locationRemoved {
+            let bytes = (try? destination.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            appendEvent("locationRemoved", photoID, "original", bytes: bytes, seconds: 0, note: "")
+        }
         save()
         onNeedsWork?()
     }
@@ -490,6 +499,7 @@ final class CuratedDeliveryModel: Identifiable {
             photo.isRendered = FileManager.default.fileExists(atPath: previewURL(item.id).path(percentEncoded: false))
                 && FileManager.default.fileExists(atPath: fullresURL(item.id).path(percentEncoded: false))
             photo.isOutsideShootWindow = PhotoCuration.isOutsideShootWindow(capturedAt: item.capturedAt, shootStartedAt: shootStartedAt)
+            photo.locationRemoved = item.locationRemoved ?? false
             restored.append(photo)
         }
         photos = restored
@@ -520,6 +530,8 @@ final class CuratedDeliveryModel: Identifiable {
             let height: Int
             let assetIdentifier: String?
             let contentKey: String
+            /// I008 전에 저장한 기록에는 없다.
+            let locationRemoved: Bool?
         }
 
         let photos: [Item]
@@ -531,7 +543,8 @@ final class CuratedDeliveryModel: Identifiable {
         let saved = SavedSelection(
             photos: photos.map {
                 SavedSelection.Item(id: $0.id, fileExtension: $0.fileExtension, fileName: $0.fileName, capturedAt: $0.capturedAt,
-                                    width: $0.width, height: $0.height, assetIdentifier: $0.assetIdentifier, contentKey: $0.contentKey)
+                                    width: $0.width, height: $0.height, assetIdentifier: $0.assetIdentifier, contentKey: $0.contentKey,
+                                    locationRemoved: $0.locationRemoved)
             },
             publishReserved: publishState == .reserved || publishState == .publishing,
             hasCustomOrder: hasCustomOrder

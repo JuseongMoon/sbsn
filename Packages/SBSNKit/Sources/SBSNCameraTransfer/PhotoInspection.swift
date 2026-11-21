@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 /// 작가가 고른 파일을 디코드하지 않고 속성만 읽은 결과(D040 ③ 입력 검사의 재료).
 ///
-/// 형식·해상도·촬영 시각만 본다. 받아도 되는지는 `SBSNCore.PhotoCuration`이 정한다.
+/// 형식·해상도·촬영 시각과 위치가 지워졌는지(I008)만 본다. 받아도 되는지는 `SBSNCore.PhotoCuration`이 정한다.
 public struct PhotoInspection: Sendable, Equatable {
     public enum Format: Sendable, Equatable {
         case jpeg
@@ -20,14 +20,17 @@ public struct PhotoInspection: Sendable, Equatable {
     public let height: Int
     /// EXIF 촬영 시각. 없으면 nil(라이트룸에서 메타데이터를 빼고 내보낸 경우 등)
     public let capturedAt: Date?
+    /// 촬영 위치가 남았는지, 사진 선택 창 등에서 지워졌는지(I008)
+    public let location: PhotoLocation
 
     public var longSide: Int { max(width, height) }
 
-    public init(format: Format, width: Int, height: Int, capturedAt: Date?) {
+    public init(format: Format, width: Int, height: Int, capturedAt: Date?, location: PhotoLocation = .absent) {
         self.format = format
         self.width = width
         self.height = height
         self.capturedAt = capturedAt
+        self.location = location
     }
 
     /// ImageIO가 열 수 없으면 nil(앱 안내: "이 폰에서 열 수 없는 형식").
@@ -40,8 +43,9 @@ public struct PhotoInspection: Sendable, Equatable {
         let height = properties[kCGImagePropertyPixelHeight] as? Int ?? 0
         let orientation = properties[kCGImagePropertyOrientation] as? Int ?? 1
         let rotates = (5...8).contains(orientation)
-        return PhotoInspection(format: format(of: identifier), width: rotates ? height : width, height: rotates ? width : height,
-                               capturedAt: captureDate(from: properties))
+        let format = Self.format(of: identifier)
+        return PhotoInspection(format: format, width: rotates ? height : width, height: rotates ? width : height,
+                               capturedAt: captureDate(from: properties), location: PhotoLocation.of(url, format: format))
     }
 
     static func format(of identifier: String) -> Format {

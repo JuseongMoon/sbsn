@@ -158,6 +158,14 @@ struct PhotoSelectionView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("gallery.metadataNotice")
+            if model.locationRemovedCount > 0 {
+                // I008(Android 먼저, 같은 문구). 원인(선택 창 옵션인지, 편집 앱이 지웠는지)은 파일로 가릴 수 없어 단정하지 않는다.
+                Label("위치 정보가 지워진 채 들어온 사진 \(model.locationRemovedCount)장: 고객 사진에 촬영 위치가 남지 않습니다(나머지 정보는 그대로).",
+                      systemImage: "location.slash")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+                    .accessibilityIdentifier("gallery.locationRemoved")
+            }
             switch model.publishState {
             case .draft, .failed:
                 if case .failed(let message) = model.publishState {

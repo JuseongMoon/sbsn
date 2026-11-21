@@ -24,6 +24,58 @@ final class MetadataProbeUITests: XCTestCase {
         print("PROBE-LOG", log.joined(separator: " | "))
     }
 
+    /// 선택기 위치 옵션 확인(I008): `.current` 선택기에서 사진 두 장을 고르고 "선택된 항목 → 옵션"의 위치 스위치를 정한 뒤 추가한다.
+    /// 받은 파일은 `Documents/MetaProbe/current/`에 남는다. 위치를 끄려면 `TEST_RUNNER_SBSN_PICKER_LOCATION=off`로 실행한다.
+    /// 시험 사진은 가짜 좌표가 든 합성 사진을 쓴다(`xcrun simctl addmedia`, 가장 최근 두 장).
+    func testPickerLocationOption() throws {
+        let includesLocation = ProcessInfo.processInfo.environment["SBSN_PICKER_LOCATION"] != "off"
+        print("PROBE-MODE 위치 \(includesLocation ? "켬" : "끔")")
+        let app = photographerApp
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["마이"].waitForExistence(timeout: 30))
+        app.tabBars.buttons["마이"].tap()
+        tapID("my.developer", app)
+        tapID("dev.metadataProbe", app)
+        app.buttons["받은 파일 지우기"].firstMatch.tap()
+        tapID("probe.current", app)
+        XCTAssertTrue(app.scrollViews.firstMatch.waitForExistence(timeout: 10), "선택기가 열리지 않음")
+        sleep(2)
+        // 위 안내 배너의 사진 앱 아이콘도 이미지로 잡히므로 큰 칸만 누른다.
+        let cells = app.scrollViews.otherElements.images.allElementsBoundByIndex.filter { $0.frame.width > 80 }
+        for cell in cells.prefix(2) {
+            cell.tap()
+            sleep(1)
+        }
+        // 아래 가운데 "선택된 항목 표시(n개) · 위치가 포함됨" → 왼쪽 아래 "옵션" → 포함: 위치 스위치
+        let selected = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "위치")).firstMatch
+        XCTAssertTrue(selected.waitForExistence(timeout: 5), "선택된 항목 단추 없음")
+        print("PROBE-PICKER", selected.label)
+        selected.tap()
+        let options = app.buttons["옵션"].firstMatch
+        XCTAssertTrue(options.waitForExistence(timeout: 5), "옵션 단추 없음")
+        options.tap()
+        let location = app.switches["위치"].firstMatch
+        XCTAssertTrue(location.waitForExistence(timeout: 5), "위치 스위치 없음")
+        print("PROBE-OPTIONS 위치 기본값", location.value as? String ?? "-")
+        if (location.value as? String == "1") != includesLocation {
+            // 행 가운데를 누르면 바뀌지 않는다. 오른쪽 스위치를 누른다.
+            location.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+            sleep(1)
+        }
+        attach("옵션 \(includesLocation ? "위치 켬" : "위치 끔")", app)
+        print("PROBE-OPTIONS 위치", location.value as? String ?? "-")
+        // 옵션 완료 → 선택된 항목 완료 → 선택기 완료
+        for _ in 0..<4 where !app.buttons["probe.current"].isHittable {
+            let done = app.buttons["완료"].firstMatch
+            guard done.waitForExistence(timeout: 3) else { break }
+            done.tap()
+            sleep(1)
+        }
+        sleep(5)
+        attach("받은 뒤", app)
+        print("PROBE-LOG", app.staticTexts.allElementsBoundByIndex.map(\.label).filter { $0.contains("/") }.joined(separator: " | "))
+    }
+
     /// 선택기는 다른 프로세스에서 그려지지만 앱 계층에 사진 칸으로 보인다. 사진 칸을 모두 누르고 "추가"를 누른다.
     private func pickEveryPhoto(_ app: XCUIApplication, route: String) {
         let grid = app.scrollViews.firstMatch

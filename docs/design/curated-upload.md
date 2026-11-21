@@ -314,6 +314,23 @@
   3. 전체 접근: 권장하지 않는다. 작가 개인 보관함 전체를 읽게 된다.
 - 권장: 실기기에서 선택기가 GPS를 남기면 그대로 간다. 빠지면 1을 기본 경로로 올리고 2는 설정 화면에서 켜는 선택지로 둔다(D028 편의 우선).
 
+### 4.3.1 위치가 지워진 채 들어온 사진 안내(I008, 2026-11-22, Android 먼저 c68c342)
+
+- 판별(`SBSNCameraTransfer.PhotoLocation`, Android `PhotoLocation`과 같음): 가져올 때 Exif의 GPS IFD를 본다.
+  - GPS IFD가 있는데 위도·경도 중 하나라도 "유리수 3개가 아님(형식·개수가 다름)" 또는 "분모가 0"이면 `removed`
+  - 위도·경도가 온전하면 `present`, GPS IFD가 없거나 좌표 항목이 없거나 Exif를 읽을 수 없으면 `absent`(안내 없음)
+  - JPEG는 이미지 데이터(SOS) 앞까지만 읽어 Exif APP1을 찾는다. HEIC는 `meta` → `iinf`(종류 `Exif`) → `iloc`(파일 오프셋 방식)로 Exif 아이템만 읽는다.
+  - ImageIO의 GPS 사전은 쓰지 않는다. 형식이 깨진 항목을 버리거나 0/0을 0으로 읽어 "없음"과 "지워짐"을 가릴 수 없다.
+- 안내: 고르기 화면 메타데이터 고지 아래에 "위치 정보가 지워진 채 들어온 사진 n장: 고객 사진에 촬영 위치가 남지 않습니다(나머지 정보는 그대로)."(`gallery.locationRemoved`). Android 뒤 문장("위치 포함"을 고르면 남음)은 넣지 않는다. 권한 창은 없다.
+- 기록: 사진마다 `selection.json`의 `locationRemoved`(I008 전 기록에는 없어 `false`로 읽는다), `events.csv`의 `locationRemoved` 행, 세션 로그 `added … location=…`. 고화질본 이식은 그대로다(D037).
+- 시험: `PhotoLocationTests` 7개. Android와 같은 사례(0/0과 Ref 0, 실제 좌표 리틀·빅 엔디언, GPS IFD 없음, 좌표 없는 GPS IFD, 읽을 수 없는 Exif, COM이 앞이라 밀린 지움, 경도만 0/0)에 더해 맥 ImageIO로 만든 HEIC·JPEG에서 값만 0으로 지운 파일을 본다.
+- **iOS 사진 선택기 실측(iOS 27.0 시뮬레이터, 가짜 좌표 합성 JPEG·HEIC, `.current`)**
+  - 선택기 아래 가운데에 "선택된 항목 표시(n개) · 위치가 포함됨"이 있다. 누르면 선택한 사진 화면이 나오고 왼쪽 아래 "옵션"에 "포함: 위치(기본 켬)·캡션(켬)·레퍼런스(끔)"와 "포맷: 자동(기본)·현재·높은 호환성"이 있다.
+  - 위치 켬(기본): 받은 파일이 원본과 바이트까지 같다(MD5 같음). 4.3의 "기본으로는 위치를 남길 것"을 시뮬레이터에서 확인했다.
+  - 위치 끔: **GPS IFD를 통째로 뺀다**(0으로 채우지 않는다). JPEG Exif APP1이 260 → 146바이트가 됐고, 이미지 데이터·기종·촬영 시각은 같았다. APP13(IPTC)은 54 → 94바이트로 바뀌었다. HEIC도 GPS IFD가 없고 기종·촬영 시각은 남았다.
+  - 그래서 iOS 선택기에서 위치를 끈 사진은 판별이 `absent`이고 **안내가 뜨지 않는다**(카메라가 위치를 안 남긴 사진과 파일로 가릴 수 없다). iOS에서 안내가 뜨는 것은 값만 0으로 지운 파일(다른 기기·앱이 지운 파일을 파일 앱으로 가져온 경우 등)뿐이다.
+  - 확인 전: 실기기에서도 같은지, 위치를 끄면 선택기가 메타데이터를 다시 쓰면서 MakerNote 등 다른 항목도 빠지는지(합성 사진에는 MakerNote가 없다). 시험은 `MetadataProbeUITests.testPickerLocationOption`(`TEST_RUNNER_SBSN_PICKER_LOCATION=off`)으로 다시 할 수 있다.
+
 ### 4.4 고객 사진 앱 저장 뒤에도 남는지(실기기 확인)
 
 - 지금 저장은 `PHAssetCreationRequest`로 파일 자체를 원본 리소스로 넣는다(`PhotoDeliveryManager.saveToPhotoLibrary`, `shouldMoveFile`). 그래서 원본 바이트가 그대로 보관될 것으로 본다.
