@@ -2,8 +2,8 @@ import SBSNUI
 
 /// 작가 앱에서 기획에는 있지만 아직 실제 데이터와 연결하지 않은 메뉴(예시 화면, D032). 근거는 총괄 문서 `UI_WIREFRAME_PLAN.md` 2절.
 enum PhotographerFeatures {
-    /// 명세 순서(P1~P18). 개발 메뉴의 "예시 화면 전체"가 쓴다.
-    static let all = [activityArea, breakTime, requestPolicy, customerBrief, safety, timer, cameraGuide, photoReview,
+    /// 명세 순서(P1~P18). 개발 메뉴의 "예시 화면 전체"가 쓴다. P6 10분 타이머와 P8 사진 검수·공개는 실제 화면이 됐다(D036).
+    static let all = [activityArea, breakTime, requestPolicy, customerBrief, safety, cameraGuide,
                       history, sales, settlement, feedback, disputes, portfolio, registration, originals, support, terms]
 
     // 촬영 탭
@@ -22,15 +22,9 @@ enum PhotographerFeatures {
     static let safety = PlannedFeature(
         id: "safety", title: "안전·긴급 지원", summary: "현장에서 문제가 생겼을 때 도움을 요청하는 화면이 들어갈 자리입니다.",
         plannedItems: ["긴급 연락", "신고"], systemImage: "exclamationmark.shield")
-    static let timer = PlannedFeature(
-        id: "timer", title: "10분 타이머", summary: "촬영 시간을 재는 타이머가 촬영 화면 위쪽에 들어갈 자리입니다.",
-        plannedItems: ["남은 시간", "연장"], systemImage: "timer")
     static let cameraGuide = PlannedFeature(
-        id: "cameraGuide", title: "카메라 연결 가이드", summary: "카메라 기종별로 FTP 전송을 설정하는 방법이 들어갈 자리입니다. 연결 주소·포트·암호는 이 화면에 그대로 보입니다.",
-        plannedItems: ["소니", "캐논", "니콘", "후지", "핫스팟 설정"], systemImage: "camera.badge.ellipsis")
-    static let photoReview = PlannedFeature(
-        id: "photoReview", title: "사진 검수·공개", summary: "고객에게 보일 사진을 고르는 화면이 들어갈 자리입니다. 지금은 받은 사진이 바로 고객에게 보입니다.",
-        plannedItems: ["AI 후보", "제외·복원", "고객 공개 승인"], systemImage: "checkmark.rectangle.stack")
+        id: "cameraGuide", title: "사진 옮기기 가이드", summary: "촬영한 사진을 카메라에서 폰으로 옮기는 방법이 들어갈 자리입니다.",
+        plannedItems: ["소니 Creators' App", "카드 리더", "라이트룸 내보내기", "캐논·니콘·후지"], systemImage: "camera.badge.ellipsis")
 
     // 내역 탭
     static let history = PlannedFeature(

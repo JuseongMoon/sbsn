@@ -1,6 +1,9 @@
 import XCTest
 
-/// 실기기 두 대로 MVP 사이클을 한 단계씩 돌리는 드라이버. 맥에서 단계마다 테스트 하나를 골라 실행한다.
+/// 실기기 두 대로 선별 전달 사이클(D036)을 한 단계씩 돌리는 드라이버. 맥에서 단계마다 테스트 하나를 골라 실행한다.
+///
+/// 사진은 작가 앱 `Documents/TestPhotos/`에 미리 넣어 두고(`xcrun devicectl device copy to`), 고르기 화면의 개발용
+/// "시험 사진 가져오기"로 넣는다. 사진 선택기는 다른 프로세스라 UI 테스트로 누르기 어렵다.
 ///
 ///   xcodebuild test-without-building -xctestrun <파일> -destination id=<기기> \
 ///     -only-testing:sbsnUITests/CycleDriverUITests/test_P1_photographerGoesAvailable
@@ -56,16 +59,45 @@ final class CycleDriverUITests: XCTestCase {
         start.tap()
         let end = app.buttons["photographer.end"]
         XCTAssertTrue(end.waitForExistence(timeout: 40), "촬영 화면으로 넘어가지 않음(고객이 시작했는지 확인)")
-        printAddresses(app)
         attachScreenshot("P2 촬영 중", app: app)
     }
 
-    /// 촬영 화면에서 받은 장수를 확인한다.
-    func test_P3_photographerShowsReceived() throws {
+    /// 촬영이 끝난 뒤 고르기 화면에서 시험 사진을 넣고, 모두 올라갈 때까지 기다린다(`SBSN_UPLOAD_TIMEOUT`초, 기본 600).
+    func test_P3_photographerImportsTestPhotos() throws {
         let app = activatePhotographer()
-        XCTAssertTrue(app.buttons["photographer.end"].waitForExistence(timeout: 20))
-        printAddresses(app)
-        attachScreenshot("P3 수신", app: app)
+        openPendingGalleryIfNeeded(app)
+        let add = app.buttons["gallery.addTestPhotos"]
+        XCTAssertTrue(add.waitForExistence(timeout: 20), "시험 사진 가져오기 버튼이 없음(디버그 빌드인지 확인)")
+        add.tap()
+        let started = Date()
+        print("SBSN 시험 사진 넣음 \(started.ISO8601Format(.iso8601.time(includingFractionalSeconds: true)))")
+        attachScreenshot("P3 고른 사진", app: app)
+        let timeout = TimeInterval(ProcessInfo.processInfo.environment["SBSN_UPLOAD_TIMEOUT"] ?? "") ?? 600
+        let header = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '고른 사진'")).firstMatch
+        XCTAssertTrue(waitUntil(timeout: timeout) {
+            guard header.exists, let counts = Self.selectionCounts(header.label) else { return false }
+            return counts.selected > 0 && counts.selected == counts.uploaded
+        }, "모두 올라가지 않음: \(header.exists ? header.label : "-")")
+        print("SBSN 모두 올라감 \(header.label) \(String(format: "%.1f", Date().timeIntervalSince(started)))초")
+        attachScreenshot("P3 올라감", app: app)
+    }
+
+    /// "고객에게 공개"(또는 공개 예약)를 누르고 공개될 때까지 기다린다.
+    func test_P14_photographerPublishes() throws {
+        let app = activatePhotographer()
+        openPendingGalleryIfNeeded(app)
+        let publish = app.buttons["gallery.publish"]
+        for _ in 0..<6 where !(publish.exists && publish.isHittable) { app.swipeUp() }
+        XCTAssertTrue(publish.waitForExistence(timeout: 20), "공개 버튼이 없음")
+        XCTAssertTrue(waitUntil(timeout: 10) { publish.isEnabled }, "공개 버튼이 꺼져 있음(5~8장인지 확인)")
+        publish.tap()
+        let confirm = app.buttons.matching(NSPredicate(format: "label IN %@", ["공개", "다 올라가면 공개"])).allElementsBoundByIndex.last { $0.isHittable }
+        try XCTUnwrap(confirm, "공개 확인 버튼이 없음").tap()
+        let tappedAt = Date()
+        // 공개가 끝나면 세션이 공개 대기에서 빼고 화면이 공개 현황으로 바뀐다.
+        XCTAssertTrue(app.navigationBars["공개한 촬영"].waitForExistence(timeout: 300), "공개되지 않음")
+        print("SBSN 공개됨 \(Date().ISO8601Format(.iso8601.time(includingFractionalSeconds: true))) 누르고 \(String(format: "%.1f", Date().timeIntervalSince(tappedAt)))초")
+        attachScreenshot("P14 공개", app: app)
     }
 
     /// 작가 앱을 백그라운드로 보낸다(구매 알림으로 깨어나는지 보는 단계 앞).
@@ -84,8 +116,8 @@ final class CycleDriverUITests: XCTestCase {
         let confirm = app.sheets.buttons["촬영 종료"].firstMatch.exists ? app.sheets.buttons["촬영 종료"].firstMatch : app.buttons.matching(identifier: "촬영 종료").element(boundBy: 1)
         XCTAssertTrue(confirm.waitForExistence(timeout: 5))
         confirm.tap()
-        XCTAssertTrue(app.staticTexts["촬영이 끝났습니다. 고객이 산 사진과 미리 올리는 사진을 마저 올립니다."].waitForExistence(timeout: 20)
-                      || app.navigationBars["십분스냅 작가"].waitForExistence(timeout: 10))
+        print("SBSN 작가 종료 \(Date().ISO8601Format(.iso8601.time(includingFractionalSeconds: true)))")
+        XCTAssertTrue(app.navigationBars["사진 고르기"].waitForExistence(timeout: 30), "사진 고르기 화면으로 넘어가지 않음")
         attachScreenshot("P5 종료", app: app)
     }
 
@@ -111,54 +143,6 @@ final class CycleDriverUITests: XCTestCase {
             print("SBSN 배너 탭 → 앱 열림 \(Date().ISO8601Format(.iso8601.time(includingFractionalSeconds: true)))")
             attachScreenshot("배너로 연 화면", app: app)
         }
-    }
-
-    /// 촬영 화면의 카메라 연결 표시가 바뀌는 대로 출력한다. 맥에서 FTP로 틀린 비밀번호·느린 전송·정상 전송을 보내는 동안 띄워 둔다.
-    func test_P7_photographerWatchesCameraLink() throws {
-        let app = activatePhotographer()
-        let link = app.descendants(matching: .any)["camera.link"]
-        XCTAssertTrue(link.waitForExistence(timeout: 20), "카메라 연결 표시가 없음")
-        let seconds = TimeInterval(ProcessInfo.processInfo.environment["SBSN_WATCH_SECONDS"] ?? "") ?? 60
-        print("SBSN 카메라 표시 감시 시작")
-        var last = ""
-        let deadline = Date().addingTimeInterval(seconds)
-        while Date() < deadline {
-            if link.exists, link.label != last {
-                last = link.label
-                print("SBSN 카메라 표시 \(Date().ISO8601Format(.iso8601.time(includingFractionalSeconds: true))) \(last)")
-                let attachment = XCTAttachment(screenshot: link.screenshot())
-                attachment.name = "카메라 표시 \(last.prefix(16))"
-                attachment.lifetime = .keepAlways
-                add(attachment)
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
-        }
-    }
-
-    /// 촬영 화면에서 측정 항목을 켜고 큰 파일 동시 업로드 수를 `SBSN_CONCURRENCY`로 맞춘다. 처음 값을 먼저 출력하므로
-    /// 앱을 다시 켠 뒤 한 번 더 돌리면 값이 유지되는지 알 수 있다.
-    func test_P8_photographerSetsConcurrency() throws {
-        let target = Int(ProcessInfo.processInfo.environment["SBSN_CONCURRENCY"] ?? "") ?? 2
-        let app = activatePhotographer()
-        let more = app.buttons["photographer.more"]
-        XCTAssertTrue(more.waitForExistence(timeout: 20), "\"…\" 메뉴가 없음")
-        more.tap()
-        let toggle = app.descendants(matching: .any)["photographer.measurements"]
-        XCTAssertTrue(toggle.waitForExistence(timeout: 5), "측정 항목이 없음")
-        toggle.tap()
-        let stepper = app.steppers.matching(NSPredicate(format: "label BEGINSWITH '큰 파일 동시 업로드'")).firstMatch
-        for _ in 0..<6 where !stepper.exists {
-            app.swipeUp()
-        }
-        XCTAssertTrue(stepper.waitForExistence(timeout: 5), "동시 업로드 조절기가 없음")
-        print("SBSN 동시 업로드 처음 값: \(stepper.label)")
-        for _ in 0..<4 where !stepper.label.contains("\(target)개") {
-            let current = Int(stepper.label.filter(\.isNumber)) ?? target
-            stepper.buttons.element(boundBy: current < target ? 1 : 0).tap()
-        }
-        print("SBSN 동시 업로드 바꾼 값: \(stepper.label)")
-        XCTAssertTrue(stepper.label.contains("\(target)개"))
-        attachScreenshot("P8 측정", app: app)
     }
 
     /// 작가 앱을 앱 전환기에서 쓸어 올려 종료한다(사용자 강제 종료). 이 뒤에는 iOS가 알림으로 앱을 깨우지 않는다.
@@ -227,8 +211,7 @@ final class CycleDriverUITests: XCTestCase {
         if isMeeting {
             XCTAssertTrue(app.staticTexts[message].waitForExistence(timeout: 15), "탭 복귀 뒤 채팅이 다시 보이지 않음")
         } else {
-            XCTAssertTrue(app.buttons["photographer.end"].waitForExistence(timeout: 15) || app.descendants(matching: .any)["camera.link"].exists,
-                          "탭 복귀 뒤 촬영 화면이 아님")
+            XCTAssertTrue(app.buttons["photographer.end"].waitForExistence(timeout: 15), "탭 복귀 뒤 촬영 화면이 아님")
         }
         attachScreenshot("P13 탭 복귀", app: app)
     }
@@ -329,39 +312,20 @@ final class CycleDriverUITests: XCTestCase {
         attachScreenshot("C8 취소", app: app)
     }
 
-    /// 사진 목록이 촬영 중 화면으로 바뀌고 미리보기가 몇 장 왔는지 기록한다.
+    /// 공개된 갤러리에 사진이 몇 장 보이는지 기록한다(공개 전이면 `SBSN_PUBLISH_TIMEOUT`초, 기본 600 기다린다).
     func test_C4_customerSeesPreviews() throws {
         let app = activateCustomer()
+        let timeout = TimeInterval(ProcessInfo.processInfo.environment["SBSN_PUBLISH_TIMEOUT"] ?? "") ?? 600
         let cells = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'photo.cell.'"))
-        XCTAssertTrue(waitUntil(timeout: 120) { cells.count > photoIndex }, "미리보기가 \(photoIndex + 1)장 이상 오지 않음")
-        print("SBSN 고객 그리드 사진 \(cells.count)장")
-        attachScreenshot("C4 미리보기", app: app)
+        XCTAssertTrue(waitUntil(timeout: timeout) { cells.count > photoIndex }, "갤러리에 사진이 \(photoIndex + 1)장 이상 보이지 않음")
+        print("SBSN 고객 갤러리 보임 \(Date().ISO8601Format(.iso8601.time(includingFractionalSeconds: true))) 사진 \(cells.count)장")
+        attachScreenshot("C4 갤러리", app: app)
     }
 
     /// `SBSN_PHOTO_INDEX`번째 사진을 열어 구매하고, 사진 앱에 저장될 때까지 기다린다.
     func test_C5_customerPurchases() throws {
         let app = customerApp
         let (fileName, purchasedAt) = try purchasePhoto(app)
-        waitForDelivery(app: app, fileName: fileName, since: purchasedAt)
-    }
-
-    /// 고화질본이 아직 없는 사진용: 산 뒤 바로 설정 앱으로 넘어가 고객 앱을 뒤로 보내고, "구매한 사진이 준비됐습니다" 배너를
-    /// 기다린 다음 고객 앱으로 돌아와 사진 앱 저장까지 본다(앱이 앞에 있으면 이 알림은 배너 없이 목록에만 남는다).
-    func test_C16_customerPurchasesThenLeaves() throws {
-        let app = customerApp
-        let (fileName, purchasedAt) = try purchasePhoto(app)
-        XCUIApplication(bundleIdentifier: "com.apple.Preferences").activate()
-        let banner = springboard.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "구매한 사진이 준비됐습니다")).firstMatch
-        if banner.waitForExistence(timeout: 120) {
-            print("SBSN 사진 준비 배너 \(Int(Date().timeIntervalSince(purchasedAt)))초 뒤: \(banner.label)")
-            let attachment = XCTAttachment(screenshot: banner.screenshot())
-            attachment.name = "사진 준비 배너"
-            attachment.lifetime = .keepAlways
-            add(attachment)
-        } else {
-            print("SBSN 사진 준비 배너 없음(고화질본이 이미 있었으면 알림이 가지 않는다)")
-        }
-        app.activate()
         waitForDelivery(app: app, fileName: fileName, since: purchasedAt)
     }
 
@@ -412,20 +376,14 @@ final class CycleDriverUITests: XCTestCase {
         app.navigationBars.buttons.element(boundBy: 0).tap()
     }
 
-    /// 촬영이 끝난 뒤: 안내가 보이고, 고화질본이 없는 사진(`SBSN_PHOTO_INDEX`)은 구매 버튼이 없어야 한다.
-    func test_C7_customerAfterEnd() throws {
+    /// 촬영이 끝난 뒤 공개 전: "작가가 사진을 고르는 중" 안내가 보이고 사진은 없어야 한다(D038, 공개 전에는 아무것도 못 본다).
+    func test_C7_customerAwaitsGallery() throws {
         let app = activateCustomer()
-        XCTAssertTrue(app.staticTexts["촬영이 끝났습니다. 준비된 사진만 구매할 수 있습니다"].waitForExistence(timeout: 20), "종료 안내가 없음")
+        XCTAssertTrue(app.descendants(matching: .any)["gallery.awaiting"].waitForExistence(timeout: 30), "고르는 중 안내가 없음")
         let cells = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'photo.cell.'"))
-        XCTAssertTrue(waitUntil(timeout: 20) { cells.count > photoIndex })
-        let cell = cells.element(boundBy: photoIndex)
-        let fileName = cell.identifier.replacingOccurrences(of: "photo.cell.", with: "")
-        cell.tap()
-        XCTAssertTrue(app.navigationBars[fileName].waitForExistence(timeout: 10))
-        RunLoop.current.run(until: Date().addingTimeInterval(2))
-        print("SBSN 종료 뒤 \(fileName) 구매 버튼 \(app.buttons["photo.purchase"].exists ? "있음" : "없음")")
-        attachScreenshot("C7 종료 뒤 \(fileName)", app: app)
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertEqual(cells.count, 0, "공개 전인데 사진이 보임")
+        print("SBSN 고객 고르는 중 확인 \(Date().ISO8601Format(.iso8601.time(includingFractionalSeconds: true)))")
+        attachScreenshot("C7 고르는 중", app: app)
     }
 
     /// 10분 넘게 갱신이 없는 작가가 지도에서 빠지는지 본다. 관리자가 갱신 시각만 다른 공개 상태 셋을 미리 넣어 둔다.
@@ -613,13 +571,20 @@ final class CycleDriverUITests: XCTestCase {
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count))
     }
 
-    private func printAddresses(_ app: XCUIApplication) {
-        let rows = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH '호스트'"))
-        for row in rows.allElementsBoundByIndex {
-            print("SBSN FTP \(row.label) \(String(describing: row.value))")
-        }
-        let received = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH '받은 '")).firstMatch
-        if received.exists { print("SBSN \(received.label)") }
+    /// 촬영 탭 홈에 있으면 맨 위 공개 대기 촬영을 연다(이미 고르기 화면이면 그대로).
+    private func openPendingGalleryIfNeeded(_ app: XCUIApplication) {
+        guard !app.navigationBars["사진 고르기"].waitForExistence(timeout: 3) else { return }
+        let pending = app.descendants(matching: .any)["home.pendingGallery"].firstMatch
+        XCTAssertTrue(pending.waitForExistence(timeout: 15), "공개 대기 촬영이 없음")
+        pending.tap()
+        XCTAssertTrue(app.navigationBars["사진 고르기"].waitForExistence(timeout: 10))
+    }
+
+    /// "고른 사진 6장 · 올라감 4장"에서 두 수를 꺼낸다.
+    nonisolated static func selectionCounts(_ label: String) -> (selected: Int, uploaded: Int)? {
+        let numbers = label.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
+        guard numbers.count >= 2 else { return nil }
+        return (numbers[0], numbers[1])
     }
 
     private func waitUntil(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {

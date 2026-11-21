@@ -20,9 +20,7 @@ struct PhotographerSampleScreen: View {
             case PhotographerFeatures.customerBrief.id: SampleCustomerBriefScreen()
             case PhotographerFeatures.safety.id:
                 SampleSafetyView(reportTarget: "고객", showsStopRequest: true, tips: PhotographerSampleData.safetyTips)
-            case PhotographerFeatures.timer.id: SampleTimerScreen()
             case PhotographerFeatures.cameraGuide.id: SampleCameraGuideScreen()
-            case PhotographerFeatures.photoReview.id: SamplePhotoReviewScreen()
             case PhotographerFeatures.history.id: SampleHistoryScreen()
             case PhotographerFeatures.sales.id: SampleSalesScreen()
             case PhotographerFeatures.settlement.id: SampleSettlementScreen()
@@ -205,46 +203,7 @@ struct SampleCustomerBriefScreen: View {
     }
 }
 
-// MARK: - P6 10분 타이머
-
-struct SampleTimerScreen: View {
-    @State private var total = 600
-    @State private var remaining = 600
-    @State private var isRunning = false
-
-    var body: some View {
-        List {
-            Section {
-                Text(String(format: "%02d:%02d", remaining / 60, remaining % 60))
-                    .font(.system(size: 64, weight: .semibold, design: .monospaced))
-                    .frame(maxWidth: .infinity)
-                    .accessibilityIdentifier("sample.timerValue")
-                ProgressView(value: Double(total - remaining), total: Double(total))
-                HStack {
-                    Button(isRunning ? "멈춤" : "시작") { isRunning.toggle() }
-                        .buttonStyle(.borderedProminent)
-                    Button("+5분 연장") {
-                        total += 300
-                        remaining += 300
-                    }
-                    .buttonStyle(.bordered)
-                }
-            } footer: {
-                Text("화면 안에서만 줄어듭니다. 실제 촬영 시작 시각과는 아직 연결하지 않았습니다.")
-            }
-            SampleNoticeSection()
-        }
-        .task(id: isRunning) {
-            while isRunning, remaining > 0, !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
-                if isRunning { remaining -= 1 }
-            }
-            if remaining == 0 { isRunning = false }
-        }
-    }
-}
-
-// MARK: - P7 카메라 연결 가이드
+// MARK: - P7 사진 옮기기 가이드
 
 struct SampleCameraGuideScreen: View {
     var body: some View {
@@ -277,72 +236,5 @@ struct SampleCameraGuideDetailScreen: View {
             SampleNoticeSection()
         }
         .sampleScreen(title: guide.brand, id: "cameraGuideDetail")
-    }
-}
-
-// MARK: - P8 사진 검수·공개
-
-struct SamplePhotoReviewScreen: View {
-    enum Filter: String, CaseIterable {
-        case all = "전체"
-        case recommended = "추천"
-        case check = "검토 필요"
-        case excluded = "제외"
-    }
-
-    @State private var filter = Filter.all
-    @State private var published: Set<String> = Set(PhotographerSampleData.reviewPhotos.filter { $0.badge != .excluded }.prefix(6).map(\.fileName))
-    @State private var status: String?
-
-    private var photos: [PhotographerSampleData.ReviewPhoto] {
-        switch filter {
-        case .all: PhotographerSampleData.reviewPhotos
-        case .recommended: PhotographerSampleData.reviewPhotos.filter { $0.badge == .recommended }
-        case .check: PhotographerSampleData.reviewPhotos.filter { $0.badge == .check }
-        case .excluded: PhotographerSampleData.reviewPhotos.filter { $0.badge == .excluded }
-        }
-    }
-
-    var body: some View {
-        List {
-            Section {
-                Picker("보기", selection: $filter) {
-                    ForEach(Filter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                Text("공개 \(published.count)장(최소 5 · 목표 6 · 최대 8)")
-                    .font(.subheadline)
-            }
-            Section {
-                SamplePhotoGrid(photos) { photo in
-                    Button {
-                        if published.contains(photo.fileName) { published.remove(photo.fileName) } else { published.insert(photo.fileName) }
-                    } label: {
-                        SamplePhoto(photo.fileName)
-                            .overlay(alignment: .topLeading) {
-                                if let badge = photo.badge {
-                                    Text(badge.rawValue)
-                                        .font(.caption2.bold())
-                                        .padding(4)
-                                        .background(.regularMaterial)
-                                }
-                            }
-                            .overlay(alignment: .topTrailing) {
-                                Image(systemName: published.contains(photo.fileName) ? "eye.fill" : "eye.slash")
-                                    .padding(4)
-                            }
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.vertical, 4)
-            }
-            Section {
-                Button("고객에게 공개") { status = "\(published.count)장을 공개했습니다(예시)" }
-                SampleStatus(status)
-            } footer: {
-                Text("지금은 받은 사진이 바로 고객에게 보입니다.")
-            }
-            SampleNoticeSection()
-        }
     }
 }

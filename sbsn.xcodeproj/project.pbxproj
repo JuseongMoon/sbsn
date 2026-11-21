@@ -659,7 +659,6 @@
 				INFOPLIST_FILE = sbsnPhotographer/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "십분스냅 작가";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "카메라에서 촬영한 사진을 같은 네트워크로 받기 위해 로컬 네트워크에 접근합니다.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "촬영 가능 상태일 때 고객 지도에 내 위치를 보여 주고, 매칭된 고객과 서로 위치를 공유하기 위해 위치를 사용합니다. 촬영 가능 상태인 동안에는 앱이 뒤에 있어도 계속 사용합니다.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -697,7 +696,6 @@
 				INFOPLIST_FILE = sbsnPhotographer/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "십분스냅 작가";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "카메라에서 촬영한 사진을 같은 네트워크로 받기 위해 로컬 네트워크에 접근합니다.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "촬영 가능 상태일 때 고객 지도에 내 위치를 보여 주고, 매칭된 고객과 서로 위치를 공유하기 위해 위치를 사용합니다. 촬영 가능 상태인 동안에는 앱이 뒤에 있어도 계속 사용합니다.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

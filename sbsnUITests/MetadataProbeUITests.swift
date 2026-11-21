@@ -63,6 +63,33 @@ final class MetadataProbeUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["끝"].waitForExistence(timeout: 120), "저장 시험이 끝나지 않음")
     }
 
+    /// 작가 앱 "고르기 화면 시험(서버 없음)": 앱 `Documents/TestPhotos/`의 사진을 넣고 검사·렌더 결과와 화면 상태를 캡처한다.
+    /// 가짜 티켓이라 업로드는 실패로 끝난다(규칙이 거부). 렌더한 파일은 앱 `Application Support/Tickets/debug-*/`에 남는다.
+    func testDebugGallery() throws {
+        let app = photographerApp
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["마이"].waitForExistence(timeout: 30))
+        app.tabBars.buttons["마이"].tap()
+        tapID("my.developer", app)
+        tapID("dev.debugGallery", app)
+        XCTAssertTrue(app.navigationBars["사진 고르기"].waitForExistence(timeout: 10))
+        attach("고르기 빈 화면", app)
+        tapID("gallery.addTestPhotos", app)
+        sleep(20)
+        attach("고른 뒤", app)
+        app.swipeUp()
+        attach("고른 뒤 아래", app)
+        let labels = app.staticTexts.allElementsBoundByIndex.map(\.label)
+        print("PROBE-GALLERY", labels.joined(separator: " | "))
+    }
+
+    private func attach(_ name: String, _ app: XCUIApplication) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     /// 목록 아래쪽에 있으면 보일 때까지 올려서 누른다.
     private func tapID(_ id: String, _ app: XCUIApplication) {
         let element = app.descendants(matching: .any)[id].firstMatch

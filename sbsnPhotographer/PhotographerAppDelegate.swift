@@ -49,9 +49,13 @@ final class PhotographerAppDelegate: NSObject, UIApplicationDelegate, UNUserNoti
         [.banner, .list, .sound]
     }
 
-    /// 배너를 탭하면 그 티켓 화면으로 간다.
+    /// 배너를 탭하면 그 티켓 화면으로 간다(구매 알림·공개 지연 알림은 그 촬영의 갤러리).
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        guard let notification = PhotographerPush.notification(from: response.notification.request.content.userInfo) else { return }
-        PhotographerSession.shared.openTicket(notification.ticketID)
+        let userInfo = response.notification.request.content.userInfo
+        if case .purchase(let purchase)? = PhotographerPush.notification(from: userInfo) {
+            PhotographerSession.shared.openTicket(purchase.ticketID, photoID: purchase.photoID)
+        } else if let ticketID = userInfo["ticketId"] as? String {
+            PhotographerSession.shared.openTicket(ticketID)
+        }
     }
 }

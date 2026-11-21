@@ -2,7 +2,7 @@ import SBSNCore
 import SBSNUI
 import SwiftUI
 
-/// 작가 "촬영" 탭의 첫 화면: 진행 중인 촬영, 이름, "촬영 가능" 토글, 새 요청 설정 자리, 알림·전원 경고.
+/// 작가 "촬영" 탭의 첫 화면: 진행 중인 촬영, 공개 대기 촬영, 이름, "촬영 가능" 토글, 새 요청 설정 자리, 알림·전원 경고.
 /// 개발 메뉴는 마이 탭으로 옮겼다(`PhotographerDeveloperPage`).
 struct PhotographerHomeView: View {
     @Environment(PhotographerSession.self) private var session
@@ -29,7 +29,7 @@ struct PhotographerHomeView: View {
 
             if let ticket = session.ticket {
                 Section("진행 중인 촬영") {
-                    NavigationLink(value: ticket.id) {
+                    NavigationLink(value: PhotographerRoute.live(ticket.id)) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(phaseTitle(ticket.phase))
                                 .font(.headline)
@@ -38,10 +38,21 @@ struct PhotographerHomeView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    if ticket.phase == .ended, let delivery = session.delivery, delivery.hasPendingDeliveries {
-                        Label("고객에게 넘길 사진을 올리는 중입니다. 끝나면 다시 촬영 가능을 켤 수 있습니다.", systemImage: "arrow.up.circle")
-                            .font(.footnote)
+                }
+            }
+
+            if !session.pendingGalleries.isEmpty {
+                Section {
+                    ForEach(session.pendingGalleries) { model in
+                        NavigationLink(value: PhotographerRoute.gallery(model.ticketID)) {
+                            PendingGalleryRow(model: model)
+                        }
+                        .accessibilityIdentifier("home.pendingGallery")
                     }
+                } header: {
+                    Text("공개 대기 \(session.pendingGalleries.count)건")
+                } footer: {
+                    Text("고르는 동안에도 다음 촬영을 받을 수 있습니다. 업로드는 앱 안에서 이어 갑니다.")
                 }
             }
 
@@ -115,7 +126,7 @@ struct PhotographerHomeView: View {
             result.append("알림 등록 실패: \(message). 매칭을 알 수 없습니다.")
         }
         if session.isAlertAuthorized == false {
-            result.append("알림이 꺼져 있습니다. 매칭·채팅·구매 배너가 오지 않습니다.")
+            result.append("알림이 꺼져 있습니다. 매칭·채팅·구매·공개 알림이 오지 않습니다.")
         }
         if session.isLowPowerModeEnabled {
             result.append("저전력 모드에서는 앱이 뒤에 있을 때 업로드가 늦어질 수 있습니다.")
@@ -132,8 +143,37 @@ struct PhotographerHomeView: View {
         case .waitingForCustomer: "고객의 시작을 기다리는 중"
         case .waitingForPhotographer: "고객이 시작을 눌렀습니다"
         case .shooting: "촬영 중"
-        case .ended: "촬영 종료 · 전달 중"
+        case .ended: "촬영 종료"
         case .cancelled: "취소됨"
+        }
+    }
+}
+
+/// 공개 대기 촬영 한 줄: 종료 시각, 고른 장수, 업로드·공개 상태
+private struct PendingGalleryRow: View {
+    let model: CuratedDeliveryModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let endedAt = model.ticket.endedAt {
+                Text("\(endedAt, format: .dateTime.hour().minute()) 종료 촬영")
+                    .font(.headline)
+            }
+            Text(statusText)
+                .font(.caption)
+                .foregroundStyle(model.photos.contains(where: \.isFailed) ? .red : .secondary)
+        }
+    }
+
+    private var statusText: String {
+        let count = model.photos.count
+        switch model.publishState {
+        case .reserved: return "공개 예약 · 올리는 중 \(model.uploadedCount)/\(count)"
+        case .publishing: return "공개하는 중"
+        case .failed(let message): return message
+        default:
+            if count == 0 { return "사진을 골라 주세요" }
+            return "고른 사진 \(count)장 · 올라감 \(model.uploadedCount)장"
         }
     }
 }

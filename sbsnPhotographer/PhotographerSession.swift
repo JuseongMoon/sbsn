@@ -5,10 +5,14 @@ import SBSNCore
 import UIKit
 import UserNotifications
 
-/// 작가 앱의 상태를 한곳에서 든다: 로그인, "촬영 가능" 상태와 위치 발행, 매칭된 티켓, 티켓의 전달 엔진, 원격 알림, 복원.
+/// 작가 앱의 상태를 한곳에서 든다: 로그인, "촬영 가능" 상태와 위치 발행, 진행 중인 티켓, 공개 대기 티켓들의 선별 업로드, 원격 알림, 복원.
 ///
-/// 화면이 아니라 앱 수준 싱글턴이다. 화면을 오가도 카메라 수신과 업로드가 끊기지 않고,
+/// 화면이 아니라 앱 수준 싱글턴이다. 화면을 오가도 업로드가 끊기지 않고,
 /// 알림으로 백그라운드에서 실행돼 화면(scene)이 없을 때도 `AppDelegate`가 이 객체로 일을 시킬 수 있다.
+///
+/// 티켓은 두 종류로 든다(D040, 설계 문서 2.7절).
+/// - 진행 중 티켓(`ticket`, 최대 1개): 매칭부터 촬영 종료까지. 작가 잠금과 짝이다.
+/// - 공개 대기 티켓(`galleries`, 여럿): 촬영이 끝나 사진을 고르고 올리는 티켓. 공개 전에도 다음 매칭을 받을 수 있다.
 @Observable
 @MainActor
 final class PhotographerSession {
@@ -23,6 +27,8 @@ final class PhotographerSession {
     private static let displayNameKey = "SBSNDisplayName"
     private static let activeTicketKey = "SBSNActiveTicketID"
     private static let availableKey = "SBSNIsAvailable"
+    private static let pendingGalleriesKey = "SBSNPendingGalleryTicketIDs"
+    private static let publishedGalleriesKey = "SBSNPublishedGalleries"
 
     private(set) var uid: String?
     var displayName: String {
@@ -30,15 +36,20 @@ final class PhotographerSession {
     }
     private(set) var isAvailable = false
     private(set) var presence: PhotographerPresence?
+    /// 진행 중인 티켓(매칭~촬영). 끝나면 공개 대기로 옮기고 비운다.
     private(set) var ticket: TicketRecord?
-    /// 촬영 중·전달 중인 티켓의 수신·업로드 엔진
-    private(set) var delivery: CameraTransferTestModel?
+    /// 공개 대기 티켓의 선별 업로드 엔진. 키는 티켓 ID.
+    private(set) var galleries: [String: CuratedDeliveryModel] = [:]
+    /// 최근에 공개한 촬영(구매 기한 동안 내역 탭에 남긴다)
+    private(set) var publishedGalleries: [PublishedGallery] = []
+    /// 지금 화면에 열린 공개 대기 티켓. 업로드 큐가 이 티켓을 먼저 처리한다.
+    var focusedGalleryID: String?
     private(set) var registration = Registration.pending
     /// 배너·소리 권한. 꺼져 있어도 앱을 깨우는 알림은 받는다.
     private(set) var isAlertAuthorized: Bool?
     private(set) var errorMessage: String?
-    /// 알림을 탭해 열어야 할 티켓. 화면이 준비되면 가져간다.
-    var pendingTicketID: String?
+    /// 알림을 탭해 열어야 할 화면. 화면이 준비되면 가져간다.
+    var pendingRoute: PhotographerRoute?
     /// 고객이 취소한 촬영. 취소되면 티켓을 놓고 홈으로 돌아가므로 작가가 알 수 있게 홈에 남겨 둔다(새 매칭이 오거나 확인하면 지운다).
     private(set) var cancelledByCustomer: TicketRecord?
     private(set) var isRestoring = false
@@ -47,20 +58,33 @@ final class PhotographerSession {
     @ObservationIgnored private var presenceTask: Task<Void, Never>?
     @ObservationIgnored private var ticketTask: Task<Void, Never>?
     @ObservationIgnored private var restoration: Task<Void, Never>?
-    /// 전달 엔진이 로컬 폴더와 서버 기록으로 사진 목록을 되살리는 작업. 티켓을 붙이는 `restoration` 안에서 시작된다.
-    @ObservationIgnored private var deliveryRestoration: Task<Void, Never>?
     @ObservationIgnored private var lifecycleObservers: [any NSObjectProtocol] = []
     @ObservationIgnored private var lastPublishedPoint: GeoPoint?
     @ObservationIgnored private var lastPublishedAt: Date?
     @ObservationIgnored private var hasStarted = false
     @ObservationIgnored private var attachingTicketID: String?
-    @ObservationIgnored private var deliveryWatch: Task<Void, Never>?
     @ObservationIgnored private var heartbeat: Task<Void, Never>?
     @ObservationIgnored private var deviceLog: DeviceConditionLog?
+    @ObservationIgnored private lazy var uploadQueue = GalleryUploadQueue(
+        models: { [unowned self] in Array(galleries.values) },
+        focusedTicketID: { [unowned self] in focusedGalleryID }
+    )
 
     private init() {
         displayName = UserDefaults.standard.string(forKey: Self.displayNameKey) ?? ""
+        publishedGalleries = Self.loadPublishedGalleries()
         Backend.configure()
+    }
+
+    /// 공개 대기 티켓(먼저 끝난 촬영부터)
+    var pendingGalleries: [CuratedDeliveryModel] {
+        galleries.values.sorted { ($0.ticket.endedAt ?? .distantPast) < ($1.ticket.endedAt ?? .distantPast) }
+    }
+
+    /// 구매 기한이 지나지 않은 공개 기록(최근 것부터)
+    var recentPublishedGalleries: [PublishedGallery] {
+        publishedGalleries.filter { $0.publishedAt.addingTimeInterval(PhotoCuration.purchaseWindow) > Date() }
+            .sorted { $0.publishedAt > $1.publishedAt }
     }
 
     var activeTicketID: String? {
@@ -86,6 +110,7 @@ final class PhotographerSession {
         }
         deviceLog.start()
         self.deviceLog = deviceLog
+        uploadQueue.start()
         restoration = Task { [weak self] in
             await self?.restoreIfNeeded()
         }
@@ -104,6 +129,7 @@ final class PhotographerSession {
             } else if let ticketID = activeTicketID {
                 await attach(ticketID: ticketID, restoring: true)
             }
+            await restoreGalleries()
             if UserDefaults.standard.bool(forKey: Self.availableKey) {
                 // 지난번에 켜 둔 "촬영 가능"을 이어 간다. 위치가 오면 presence가 다시 발행된다.
                 isAvailable = true
@@ -172,28 +198,21 @@ final class PhotographerSession {
                 Task { await TicketService.acknowledge(ticketId: record.id) }
             }
         case .shooting:
-            startDelivery(for: record, restoring: restoring)
+            // 선별 흐름은 촬영 중에 위치가 필요 없다(만나기 위치 공유는 시작에서 멈춘다). 배터리를 아끼려고 끈다.
+            if record.isCurated, !isAvailable {
+                location.stop()
+            }
         case .ended:
-            if restoring, CameraTransferTestModel.hasLocalFiles(ticketID: record.id) {
-                startDelivery(for: record, restoring: true)
+            if record.isCurated {
+                beginGallery(for: record)
             }
-            delivery?.stopReceiving()
-            // 고객이 끝낸 경우(작가가 사라졌을 때) 작가 잠금이 남아 있으니 작가 앱이 대신 풀고 "촬영 가능"도 끈다.
-            if presence?.activeTicketId == record.id, let uid {
-                Task {
-                    try? await PhotographerDirectory.clearActiveTicket(uid: uid)
-                    try? await PhotographerDirectory.setAvailable(uid: uid, false)
-                }
+            // 고객이 끝낸 경우(작가가 사라졌을 때) 고객이 같은 쓰기로 잠금을 풀었다. "촬영 가능"만 끈다.
+            if presence?.isAvailable == true, let uid {
+                Task { try? await PhotographerDirectory.setAvailable(uid: uid, false) }
             }
-            releaseIfDelivered()
-            watchDeliveryUntilDone()
-        case .cancelled:
-            delivery?.stop()
-            delivery = nil
             detachTicket()
-            if presence?.activeTicketId == record.id, let uid {
-                Task { try? await PhotographerDirectory.clearActiveTicket(uid: uid) }
-            }
+        case .cancelled:
+            detachTicket()
             if record.cancelledBy == record.customerUid {
                 announceCancellation(record)
             }
@@ -205,64 +224,98 @@ final class PhotographerSession {
         }
     }
 
-    private func makeDelivery(for record: TicketRecord) -> CameraTransferTestModel {
-        let model = CameraTransferTestModel(ticketID: record.id, customerUID: record.customerUid)
-        model.onLargeUploadFinished = { [weak self] in
-            // 업로드 작업이 마무리된 뒤 확인하도록 한 번 미룬다.
-            Task { @MainActor in self?.releaseIfDelivered() }
+    // MARK: - 공개 대기
+
+    /// 끝난 선별 티켓을 공개 대기로 옮긴다. 화면은 그 티켓의 고르기 화면으로 간다.
+    private func beginGallery(for record: TicketRecord) {
+        if let model = galleries[record.id] {
+            model.updateTicket(record)
+        } else {
+            let model = makeGallery(for: record)
+            galleries[record.id] = model
+            savePendingGalleries()
+            if CuratedDeliveryModel.hasLocalFiles(ticketID: record.id) {
+                // 앱을 다시 켰을 때 진행 중이던 티켓이 이미 끝나 있었다. 고르던 사진을 되살린다.
+                Task { await model.restore() }
+            }
+            model.appendEvent("ended", "-", "-", bytes: 0, seconds: 0, note: record.endedAt.map { "\($0)" } ?? "")
+            scheduleReminder(for: record)
         }
-        delivery = model
+        pendingRoute = .gallery(record.id)
+    }
+
+    private func makeGallery(for record: TicketRecord) -> CuratedDeliveryModel {
+        let model = CuratedDeliveryModel(ticket: record)
+        model.onNeedsWork = { [weak self] in self?.uploadQueue.signal() }
+        model.onPublished = { [weak self] model in self?.finishGallery(model) }
         return model
     }
 
-    private func startDelivery(for record: TicketRecord, restoring: Bool) {
-        if delivery == nil {
-            let model = makeDelivery(for: record)
-            if restoring {
-                if CameraTransferTestModel.hasLocalFiles(ticketID: record.id) {
-                    // 복원 Task가 실제로 돌기 전에 다른 경로(티켓 리스너, 앱 활성화)가 서버를 열지 못하게 한다.
-                    model.holdServerUntilRestoreScan()
-                    let headless = UIApplication.shared.applicationState == .background
-                    deliveryRestoration = Task {
-                        await model.restore(headless: headless)
-                        if record.phase == .shooting, UIApplication.shared.applicationState != .background {
-                            model.start()
-                        }
-                    }
-                } else {
-                    errorMessage = "이 기기에 이전 촬영의 원본이 없습니다. 촬영을 종료해 주세요."
-                }
-            } else if UIApplication.shared.applicationState != .background {
-                model.start()
+    /// 앱을 켤 때 공개 대기 티켓을 되살린다. 취소됐거나 이전 방식이면 버리고, 이미 공개됐으면 공개 기록으로 옮긴다.
+    private func restoreGalleries() async {
+        for ticketID in UserDefaults.standard.stringArray(forKey: Self.pendingGalleriesKey) ?? [] where galleries[ticketID] == nil {
+            guard let record = try? await TicketService.fetchTicket(ticketID) else {
+                // 읽지 못하면(오프라인 등) 다음에 다시 본다. 로컬 기록만 있으면 일단 되살린다.
+                continue
             }
-        } else if record.phase == .shooting, UIApplication.shared.applicationState != .background {
-            delivery?.start()
+            guard record.isCurated, record.phase == .ended else {
+                try? FileManager.default.removeItem(at: CuratedDeliveryModel.directory(for: ticketID))
+                continue
+            }
+            let model = makeGallery(for: record)
+            galleries[ticketID] = model
+            await model.restore()
         }
+        savePendingGalleries()
+        uploadQueue.signal()
     }
 
-    /// 종료된 티켓의 구매 전달이 다 끝나면 티켓을 놓는다. 그 전까지는 새 "촬영 가능"을 켤 수 없다.
-    func releaseIfDelivered() {
-        guard let ticket, ticket.phase == .ended else { return }
-        if let delivery, delivery.hasPendingDeliveries {
-            return
-        }
-        delivery?.stop()
-        delivery = nil
-        detachTicket()
+    /// 공개가 끝난 티켓: 공개 기록으로 옮기고 지연 알림을 지우고 로컬 사본을 지운다.
+    private func finishGallery(_ model: CuratedDeliveryModel) {
+        let record = PublishedGallery(ticketID: model.ticketID, publishedAt: model.ticket.galleryPublishedAt ?? Date(),
+                                      endedAt: model.ticket.endedAt, photoCount: model.photos.count)
+        publishedGalleries.removeAll { $0.ticketID == record.ticketID }
+        publishedGalleries.append(record)
+        savePublishedGalleries()
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [Self.reminderID(model.ticketID)])
+        galleries[model.ticketID] = nil
+        savePendingGalleries()
+        model.deleteLocalFiles()
     }
 
-    /// 미리 올리기 시간이 끝나는 것처럼 이벤트 없이 바뀌는 조건이 있어, 종료된 티켓은 30초마다 전달이 끝났는지 본다.
-    private func watchDeliveryUntilDone() {
-        guard deliveryWatch == nil else { return }
-        deliveryWatch = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(30))
-                guard let self, ticket?.phase == .ended else { break }
-                releaseIfDelivered()
-            }
-            self?.deliveryWatch = nil
-        }
+    private func savePendingGalleries() {
+        UserDefaults.standard.set(pendingGalleries.map(\.ticketID), forKey: Self.pendingGalleriesKey)
     }
+
+    private func savePublishedGalleries() {
+        // 구매 기한이 지난 지 하루가 넘은 기록은 버린다.
+        let keep = publishedGalleries.filter { $0.publishedAt.addingTimeInterval(PhotoCuration.purchaseWindow + 86_400) > Date() }
+        publishedGalleries = keep
+        UserDefaults.standard.set(try? JSONEncoder().encode(keep), forKey: Self.publishedGalleriesKey)
+    }
+
+    private static func loadPublishedGalleries() -> [PublishedGallery] {
+        guard let data = UserDefaults.standard.data(forKey: publishedGalleriesKey) else { return [] }
+        return (try? JSONDecoder().decode([PublishedGallery].self, from: data)) ?? []
+    }
+
+    /// 종료 30분 뒤에도 공개하지 않았으면 다시 알린다(티켓마다 한 번). 공개하면 지운다.
+    private func scheduleReminder(for record: TicketRecord) {
+        guard let endedAt = record.endedAt else { return }
+        let fireAt = endedAt.addingTimeInterval(PhotoCuration.publishReminderDelay)
+        let delay = fireAt.timeIntervalSinceNow
+        guard delay > 1 else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "사진을 아직 공개하지 않았습니다"
+        content.body = "고객이 사진을 기다리고 있습니다. 5~8장을 골라 공개해 주세요."
+        content.sound = .default
+        content.userInfo = ["type": "galleryReminder", "ticketId": record.id]
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: delay, repeats: false)
+        let request = UNNotificationRequest(identifier: Self.reminderID(record.id), content: content, trigger: trigger)
+        Task { try? await UNUserNotificationCenter.current().add(request) }
+    }
+
+    private static func reminderID(_ ticketID: String) -> String { "gallery-reminder-\(ticketID)" }
 
     /// 고객이 취소하면 작가 앱은 티켓을 놓고 홈으로 돌아간다. 폰이 잠겨 있으면 작가가 모르고 고객을 찾아갈 수 있어
     /// 홈에 안내를 남기고, 앱이 화면에 없으면 로컬 알림을 띄운다. 매칭 중에는 백그라운드 위치로 앱이 살아 있어
@@ -284,8 +337,6 @@ final class PhotographerSession {
     }
 
     private func detachTicket() {
-        deliveryWatch?.cancel()
-        deliveryWatch = nil
         ticketTask?.cancel()
         ticketTask = nil
         ticket = nil
@@ -310,7 +361,7 @@ final class PhotographerSession {
                 return
             }
             guard ticket == nil else {
-                errorMessage = "진행 중인 촬영이 있습니다. 전달이 끝나면 다시 켤 수 있습니다."
+                errorMessage = "진행 중인 촬영이 있습니다. 촬영을 끝내면 다시 켤 수 있습니다."
                 return
             }
             displayName = name
@@ -407,7 +458,6 @@ final class PhotographerSession {
         guard let ticket, ticket.canEnd(.photographer) else { return }
         do {
             try await TicketService.end(ticketId: ticket.id, photographerUid: ticket.photographerUid)
-            delivery?.stopReceiving()
         } catch {
             errorMessage = "종료를 기록하지 못했습니다: \(error.localizedDescription)"
         }
@@ -440,53 +490,28 @@ final class PhotographerSession {
         self.registration = registration
     }
 
-    /// 원격 알림. 매칭은 티켓을 붙여 "받음"을 남기고, 구매는 전달 엔진이 고화질본을 올린다. 처리할 일이 있었으면 true.
+    /// 원격 알림. 매칭은 티켓을 붙여 "받음"을 남긴다. 처리할 일이 있었으면 true.
+    /// 구매 알림(`curatedPhotoPurchased`)은 판매 소식이라 할 일이 없다. 고화질본은 공개 전에 이미 올라가 있다(D038).
     func handleRemoteNotification(_ userInfo: [AnyHashable: Any]) async -> Bool {
         guard let notification = PhotographerPush.notification(from: userInfo) else { return false }
-        await waitForRestoration()
+        await restoration?.value
         switch notification {
         case .match(let ticketID):
             await attach(ticketID: ticketID, restoring: false)
             return true
-        case .message:
+        case .message, .purchase:
             return false
-        case .purchase(let purchase):
-            if delivery == nil || delivery?.ticketID != purchase.ticketID {
-                // 앱이 메모리에서 내려간 뒤 깨어났다. 로컬 폴더가 있으면 가볍게 복원해서 그 한 장을 올린다.
-                guard activeTicketID == purchase.ticketID, CameraTransferTestModel.hasLocalFiles(ticketID: purchase.ticketID),
-                      let ticket, ticket.id == purchase.ticketID
-                else { return false }
-                let model = makeDelivery(for: ticket)
-                await model.restore(headless: true)
-            }
-            guard let delivery else { return false }
-            return await delivery.handleWake(for: purchase)
         }
     }
 
-    /// 복원이 끝나기를 잠깐 기다린다. 알림으로 깨어 있는 시간이 짧아 5초만 기다리고 넘어간다.
-    /// 티켓을 붙인 뒤 전달 엔진이 사진 목록을 되살리는 것까지 기다린다. 목록이 비어 있는 채로 구매를 처리하면
-    /// 기다릴 사진이 없어 알림 처리가 바로 끝나고, iOS가 업로드 도중 앱을 멈출 수 있다(실기기에서 두 작업이 0.1초 차이였다).
-    /// (기다리기를 그만둬도 복원 자체는 계속된다.)
-    private func waitForRestoration() async {
-        guard restoration != nil else { return }
-        // 전달 엔진의 복원은 티켓을 붙이는 복원 안에서 시작되므로 차례로 기다린다.
-        let restored = Task { [weak self] in
-            await self?.restoration?.value
-            await self?.deliveryRestoration?.value
-        }
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask { await restored.value }
-            group.addTask { try? await Task.sleep(for: .seconds(5)) }
-            await group.next()
-            group.cancelAll()
-        }
-    }
-
-    /// 알림을 탭했을 때. 화면이 준비돼 있으면 티켓 화면으로 간다.
-    func openTicket(_ ticketID: String) {
-        pendingTicketID = ticketID
-        if ticket?.id != ticketID {
+    /// 알림을 탭했을 때. 진행 중 티켓이면 그 화면, 공개 대기·공개한 티켓이면 갤러리 화면으로 간다.
+    func openTicket(_ ticketID: String, photoID: String? = nil) {
+        if ticket?.id == ticketID {
+            pendingRoute = .live(ticketID)
+        } else if galleries[ticketID] != nil || publishedGalleries.contains(where: { $0.ticketID == ticketID }) {
+            pendingRoute = .gallery(ticketID)
+        } else {
+            // 매칭 알림을 앱이 꺼져 있을 때 탭했다. 티켓을 붙이면 화면이 열린다.
             Task { await attach(ticketID: ticketID, restoring: activeTicketID == ticketID) }
         }
     }
@@ -496,13 +521,6 @@ final class PhotographerSession {
     private func observeLifecycle() {
         let center = NotificationCenter.default
         lifecycleObservers = [
-            center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated {
-                    // 자동 시험 도구가 이 기록으로 백그라운드 전환을 확인한다.
-                    self?.delivery?.note("scenePhase: background")
-                    self?.delivery?.suspendForBackground()
-                }
-            },
             center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated {
                     self?.didBecomeActive()
@@ -511,24 +529,18 @@ final class PhotographerSession {
         ]
     }
 
+    /// 앱이 앞으로 오면 실패한 업로드를 다시 하고 큐를 깨운다(뒤에 있는 동안 멈춘 렌더·전송을 이어 간다).
     private func didBecomeActive() {
-        delivery?.note("scenePhase: active")
-        if ticket?.phase == .shooting {
-            delivery?.resumeFromBackground()
-            // 앱이 뒤에 있는 동안 촬영이 시작됐으면(상대가 마지막으로 시작을 누름) 수신을 아직 열지 않았다.
-            delivery?.start()
-        } else {
-            delivery?.retryFailedUploads()
+        for model in galleries.values {
+            model.retryFailedUploads()
         }
-        releaseIfDelivered()
+        uploadQueue.signal()
     }
 
     // MARK: - 디버그
 
     /// 새 작가로 시험하려고 익명 계정을 버린다. 익명 계정은 키체인에 남아 앱을 지워도 돌아오기 때문이다.
     func resetAnonymousAccount() async {
-        delivery?.stop()
-        delivery = nil
         presenceTask?.cancel()
         ticketTask?.cancel()
         ticket = nil
@@ -549,8 +561,39 @@ final class PhotographerSession {
     }
 
     func clearLocalTicket() {
-        delivery?.stop()
-        delivery = nil
         detachTicket()
     }
+
+    #if DEBUG
+    /// 서버 없이 고르기 화면을 시험한다(가져오기·검사·렌더·화면 상태). 가짜 끝난 티켓이라 업로드는 실패로 끝나고, 공개 대기 목록에 저장하지 않는다.
+    func openDebugGallery() {
+        let now = Date()
+        let record = TicketRecord(id: "debug-\(UUID().uuidString.prefix(8).lowercased())", customerUid: "debug-customer",
+                                  photographerUid: uid ?? "debug-photographer", photographerDisplayName: displayName,
+                                  createdAt: now.addingTimeInterval(-20 * 60), customerStartedAt: now.addingTimeInterval(-15 * 60),
+                                  photographerStartedAt: now.addingTimeInterval(-15 * 60), endedAt: now.addingTimeInterval(-60))
+        let model = makeGallery(for: record)
+        galleries[record.id] = model
+        pendingRoute = .gallery(record.id)
+    }
+    #endif
+}
+
+/// 작가 앱 촬영 탭에서 여는 화면
+enum PhotographerRoute: Hashable {
+    /// 진행 중 티켓(만나기·촬영)
+    case live(String)
+    /// 공개 대기·공개한 티켓의 갤러리
+    case gallery(String)
+}
+
+/// 공개한 촬영 기록(내역 탭). 구매 기한 동안 남긴다.
+struct PublishedGallery: Codable, Identifiable, Hashable {
+    let ticketID: String
+    let publishedAt: Date
+    let endedAt: Date?
+    let photoCount: Int
+
+    var id: String { ticketID }
+    var purchaseClosesAt: Date { publishedAt.addingTimeInterval(PhotoCuration.purchaseWindow) }
 }

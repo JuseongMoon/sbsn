@@ -3,7 +3,8 @@ import SBSNCore
 import SBSNUI
 import SwiftUI
 
-/// 매칭된 촬영 하나. 만나기 전에는 지도·채팅·시작, 촬영 중에는 카메라 수신 화면, 끝나면 전달 상태를 보여 준다.
+/// 진행 중인 촬영 하나. 만나기 전에는 지도·채팅·시작, 촬영 중에는 10분 타이머·채팅·종료를 보여 준다.
+/// 끝나면 세션이 공개 대기로 옮기고 화면은 사진 고르기로 간다(`GalleryRouteView`).
 struct PhotographerTicketView: View {
     @Environment(PhotographerSession.self) private var session
     @State private var locations: [LocationSample] = []
@@ -11,8 +12,6 @@ struct PhotographerTicketView: View {
     @State private var confirmsCancel = false
     @State private var confirmsEnd = false
     @State private var isWorking = false
-    /// 촬영 중에는 홈으로 나갈 수 없어, 현장에서 업로드 설정을 바꿔 비교할 수 있게 측정 항목을 이 화면("…" 메뉴)에서 켠다.
-    @State private var showsMeasurements = false
     /// "…" 메뉴에서 연 예시 화면
     @State private var openedFeature: PlannedFeature?
     /// 채팅 "…" 메뉴의 신고·차단(예시 시트, D032). 화면과 채팅 시트에서 따로 띄운다.
@@ -65,31 +64,49 @@ struct PhotographerTicketView: View {
 
     @ViewBuilder
     private func content(for ticket: TicketRecord) -> some View {
-        switch ticket.phase {
-        case .matched, .waitingForCustomer, .waitingForPhotographer:
-            meeting(ticket)
-        case .shooting, .ended:
-            if let delivery = session.delivery {
-                CameraTransferTestView(model: delivery, showsMeasurements: showsMeasurements, showsPlannedFeatures: true)
+        if !ticket.isCurated {
+            // 전환 전에 만든 실시간 FTP 티켓(D039). 이 버전은 이어 가지 못하고 끝내거나 취소만 한다.
+            legacyTicket(ticket)
+        } else {
+            switch ticket.phase {
+            case .matched, .waitingForCustomer, .waitingForPhotographer:
+                meeting(ticket)
+            case .shooting, .ended:
+                ShootingTimerView(ticket: ticket)
                     .safeAreaInset(edge: .bottom) {
                         shootingBar(ticket)
                     }
+                    .navigationTitle("촬영 중")
+                    .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
                         Button("채팅", systemImage: "bubble.left.and.bubble.right") { showsChat = true }
-                        Menu("더 보기", systemImage: "ellipsis.circle") {
-                            Toggle("측정", systemImage: "gauge.with.dots.needle.33percent", isOn: $showsMeasurements)
-                                .accessibilityIdentifier("photographer.measurements")
-                            plannedMenuItems
-                        }
-                        .accessibilityIdentifier("photographer.more")
+                            .accessibilityIdentifier("photographer.chat")
+                        Menu("더 보기", systemImage: "ellipsis.circle") { plannedMenuItems }
+                            .accessibilityIdentifier("photographer.more")
                     }
-            } else {
-                ContentUnavailableView("전달이 끝났습니다", systemImage: "checkmark.circle")
+            case .cancelled:
+                cancelled(ticket)
             }
-        case .cancelled:
-            ContentUnavailableView("취소된 촬영입니다", systemImage: "xmark.circle",
-                                   description: Text(ticket.cancelledBy == ticket.customerUid ? "고객이 취소했습니다." : "취소했습니다."))
         }
+    }
+
+    private func legacyTicket(_ ticket: TicketRecord) -> some View {
+        ContentUnavailableView {
+            Label("이전 방식 촬영입니다", systemImage: "exclamationmark.triangle")
+        } description: {
+            Text("실시간 FTP로 시작한 촬영은 이 버전에서 이어 갈 수 없습니다. 끝내거나 취소해 주세요.")
+        } actions: {
+            if ticket.canCancel {
+                Button("촬영 취소", role: .destructive) { perform { await session.cancelMatch() } }
+            } else if ticket.canEnd(.photographer) {
+                Button("촬영 종료", role: .destructive) { perform { await session.endShooting() } }
+            }
+        }
+    }
+
+    private func cancelled(_ ticket: TicketRecord) -> some View {
+        ContentUnavailableView("취소된 촬영입니다", systemImage: "xmark.circle",
+                               description: Text(ticket.cancelledBy == ticket.customerUid ? "고객이 취소했습니다." : "취소했습니다."))
     }
 
     private func meeting(_ ticket: TicketRecord) -> some View {
@@ -149,8 +166,7 @@ struct PhotographerTicketView: View {
     private func shootingBar(_ ticket: TicketRecord) -> some View {
         VStack(spacing: 6) {
             if ticket.phase == .ended {
-                Text("촬영이 끝났습니다. 고객이 산 사진과 미리 올리는 사진을 마저 올립니다.")
-                    .font(.footnote)
+                ProgressView("사진 고르기로 넘어가는 중…")
             } else {
                 Button("촬영 종료", role: .destructive) { confirmsEnd = true }
                     .buttonStyle(.borderedProminent)
@@ -166,7 +182,7 @@ struct PhotographerTicketView: View {
                 perform { await session.endShooting() }
             }
         } message: {
-            Text("카메라 수신을 멈춥니다. 이미 받은 사진은 계속 고객에게 넘깁니다.")
+            Text("끝나면 카메라 사진을 폰으로 옮겨 5~8장을 골라 공개합니다. 고르는 동안에도 다음 촬영을 받을 수 있습니다.")
         }
     }
 

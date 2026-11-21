@@ -5,11 +5,34 @@ import SwiftUI
 import UIKit
 import UserNotifications
 
-/// "내역" 탭: 촬영 이력·판매·정산·품질(모두 빈 페이지).
+/// "내역" 탭: 공개한 촬영(구매 기한 동안), 촬영 이력·판매·정산·품질(예시 화면).
 struct PhotographerHistoryTab: View {
+    @Environment(PhotographerSession.self) private var session
+
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    if session.recentPublishedGalleries.isEmpty {
+                        Text("최근 7일 동안 공개한 촬영이 없습니다.")
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(session.recentPublishedGalleries) { gallery in
+                        NavigationLink {
+                            PublishedGalleryView(ticketID: gallery.ticketID)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(gallery.publishedAt, format: .dateTime.month().day().hour().minute()) 공개 · \(gallery.photoCount)장")
+                                Text("구매 기한 \(gallery.purchaseClosesAt, format: .dateTime.month().day().hour().minute())")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .accessibilityIdentifier("history.published")
+                    }
+                } header: {
+                    Text("공개한 촬영")
+                }
                 Section("촬영") {
                     PhotographerSampleLink(PhotographerFeatures.history)
                     PhotographerSampleLink(PhotographerFeatures.sales)
@@ -63,11 +86,10 @@ struct PhotographerPermissionsSection: View {
         Section {
             row("위치", value: locationText, id: "permission.location")
             row("알림", value: notificationText, id: "permission.notifications")
-            row("로컬 네트워크", value: "설정에서 확인", id: "permission.localNetwork")
         } header: {
             Text("권한·알림")
         } footer: {
-            Text("위치는 촬영 가능인 동안 고객 지도와 만나는 지도에, 알림은 매칭·채팅·구매를 받을 때 씁니다. 로컬 네트워크 허용 여부는 앱이 읽을 수 없어, 카메라가 붙지 않으면 설정에서 확인해 주세요.")
+            Text("위치는 촬영 가능인 동안 고객 지도와 만나는 지도에, 알림은 매칭·채팅·구매·공개 알림을 받을 때 씁니다. 사진은 고를 때마다 선택기로 고르므로 사진 보관함 권한이 필요 없습니다.")
         }
         .task { await refresh() }
         .onChange(of: scenePhase) { _, phase in
@@ -145,11 +167,6 @@ struct PhotographerDeveloperPage: View {
     var body: some View {
         List {
             Section {
-                if let delivery = session.delivery {
-                    NavigationLink("카메라 전송 측정") {
-                        CameraTransferTestView(model: delivery, showsMeasurements: true)
-                    }
-                }
                 LabeledContent("작가 ID", value: session.uid ?? "-")
                     .font(.caption)
                     .textSelection(.enabled)
@@ -165,6 +182,8 @@ struct PhotographerDeveloperPage: View {
             Section("시험") {
                 NavigationLink("메타데이터 경로 시험") { MetadataProbeView() }
                     .accessibilityIdentifier("dev.metadataProbe")
+                Button("고르기 화면 시험(서버 없음)") { session.openDebugGallery() }
+                    .accessibilityIdentifier("dev.debugGallery")
             }
             #endif
             Section("예시 화면 전체(\(PhotographerFeatures.all.count))") {

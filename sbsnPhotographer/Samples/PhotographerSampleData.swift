@@ -43,45 +43,26 @@ enum PhotographerSampleData {
         let steps: [String]
     }
 
-    static let commonSteps = [
-        "폰의 개인용 핫스팟을 켜고 \"호환성 최대화\"를 켭니다(2.4GHz).",
-        "카메라 Wi-Fi 설정에서 폰 핫스팟에 연결합니다.",
-        "카메라 FTP 설정에 서버를 등록합니다(호스트·포트·사용자·암호는 촬영 화면 값).",
-        "보안 프로토콜은 끄고, 패시브 모드 항목이 있으면 켭니다.",
-        "자동 전송(촬영 중 전송)을 켭니다.",
-        "시험 사진 1장을 찍어 촬영 화면의 받은 사진에 뜨는지 확인합니다.",
-    ]
-
     static let cameraGuides = [
-        CameraGuide(brand: "소니", note: "a7C II 확인됨, a7 III는 펌웨어 4.00 이상", steps: commonSteps),
-        CameraGuide(brand: "캐논", note: "HDR PQ는 끕니다(HEIF로 저장됨)", steps: commonSteps),
-        CameraGuide(brand: "니콘", note: "톤 모드 SDR, [HEIF 형식으로 업로드]는 끕니다", steps: commonSteps),
-        CameraGuide(brand: "후지", note: "파일 형식을 JPEG로 둡니다", steps: commonSteps),
-        CameraGuide(brand: "핫스팟 설정", note: "핫스팟 화면을 켜 두면 연결이 잘 끊기지 않습니다", steps: [
-            "설정 > 개인용 핫스팟을 엽니다.",
-            "\"다른 사람의 연결 허용\"을 켭니다.",
-            "\"호환성 최대화\"를 켭니다(a7 III 같은 2.4GHz 카메라).",
-            "Wi-Fi 암호를 카메라에 입력합니다.",
-            "카메라가 붙으면 촬영 화면 연결 표시가 \"연결됨\"으로 바뀝니다.",
+        CameraGuide(brand: "소니 Creators' App", note: "원본 크기로 가져옵니다(2MP 축소 설정은 끕니다)", steps: [
+            "카메라와 폰을 Creators' App으로 연결합니다.",
+            "이번 촬영 사진을 골라 \"원본\" 크기로 폰에 가져옵니다.",
+            "가져온 사진은 사진 앱에 저장됩니다.",
+            "십분스냅 작가 앱의 사진 고르기에서 \"사진 앱에서 추가\"로 고릅니다.",
+        ]),
+        CameraGuide(brand: "카드 리더", note: "사진 앱을 거치지 않고 고를 수 있습니다", steps: [
+            "SD 카드를 카드 리더로 폰에 연결합니다.",
+            "사진 고르기에서 \"파일에서 추가\"를 누르고 카드의 DCIM 폴더에서 고릅니다.",
+        ]),
+        CameraGuide(brand: "라이트룸 내보내기", note: "긴 변 4,000px 이상, JPEG로 내보냅니다", steps: [
+            "보정한 사진을 \"JPG, 원본 크기\"로 사진 앱에 내보냅니다.",
+            "메타데이터는 구매한 고객에게 그대로 전달됩니다. 뺄 항목은 내보낼 때 고릅니다.",
+        ]),
+        CameraGuide(brand: "캐논·니콘·후지", note: "JPEG로 찍거나 JPEG로 내보냅니다(RAW는 받지 않습니다)", steps: [
+            "제조사 앱(Camera Connect·SnapBridge·XApp)으로 원본 크기 JPEG를 폰에 옮깁니다.",
+            "사진 앱에서 고릅니다.",
         ]),
     ]
-
-    enum ReviewBadge: String {
-        case recommended = "추천"
-        case excluded = "제외"
-        case check = "검토"
-    }
-
-    struct ReviewPhoto: Identifiable {
-        var id: String { fileName }
-        let fileName: String
-        let badge: ReviewBadge?
-    }
-
-    static let reviewPhotos: [ReviewPhoto] = (1...12).map { index in
-        let badge: ReviewBadge? = [1, 4, 7].contains(index) ? .recommended : [3, 10].contains(index) ? .excluded : [6].contains(index) ? .check : nil
-        return ReviewPhoto(fileName: String(format: "DSC%04d.JPG", 200 + index), badge: badge)
-    }
 
     // MARK: 내역 탭
 
@@ -173,9 +154,9 @@ enum PhotographerSampleData {
         OriginalsShoot(title: "11월 19일 13:40 · 광화문", size: "0.6GB", sold: "판매 없음"),
     ]
 
-    static let supportTypes = ["카메라 연결", "정산", "앱 오류", "기타"]
+    static let supportTypes = ["사진 옮기기", "정산", "앱 오류", "기타"]
     static let supportFAQ = [
-        ("카메라가 연결되지 않을 때", "핫스팟 \"호환성 최대화\"를 켜고, 카메라 FTP의 호스트 주소가 촬영 화면 값과 같은지 확인하세요."),
+        ("사진이 고르기에서 막힐 때", "JPEG·HEIC만 받고, 긴 변 4,000px 미만과 RAW는 받지 않습니다. 원본 크기 JPEG로 다시 내보내 주세요."),
         ("배터리 아끼기", "촬영 사이에는 화면을 끄고, 저전력 모드는 끕니다(업로드가 늦어집니다)."),
         ("정산일", "월말에 확정한 금액을 다음 달 15일에 지급합니다. 휴일이면 다음 영업일입니다."),
     ]
