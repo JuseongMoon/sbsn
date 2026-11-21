@@ -329,7 +329,8 @@
   - 위치 켬(기본): 받은 파일이 원본과 바이트까지 같다(MD5 같음). 4.3의 "기본으로는 위치를 남길 것"을 시뮬레이터에서 확인했다.
   - 위치 끔: **GPS IFD를 통째로 뺀다**(0으로 채우지 않는다). JPEG Exif APP1이 260 → 146바이트가 됐고, 이미지 데이터·기종·촬영 시각은 같았다. APP13(IPTC)은 54 → 94바이트로 바뀌었다. HEIC도 GPS IFD가 없고 기종·촬영 시각은 남았다.
   - 그래서 iOS 선택기에서 위치를 끈 사진은 판별이 `absent`이고 **안내가 뜨지 않는다**(카메라가 위치를 안 남긴 사진과 파일로 가릴 수 없다). iOS에서 안내가 뜨는 것은 값만 0으로 지운 파일(다른 기기·앱이 지운 파일을 파일 앱으로 가져온 경우 등)뿐이다.
-  - 확인 전: 실기기에서도 같은지, 위치를 끄면 선택기가 메타데이터를 다시 쓰면서 MakerNote 등 다른 항목도 빠지는지(합성 사진에는 MakerNote가 없다). 시험은 `MetadataProbeUITests.testPickerLocationOption`(`TEST_RUNNER_SBSN_PICKER_LOCATION=off`)으로 다시 할 수 있다.
+  - 결정(I008 보충, 총괄 2026-11-22): iOS 선택기 경로에는 고정 안내를 더하지 않는다. 위치 옵션 기본이 켬이고 기존 메타데이터 고지가 촬영 위치 전달을 알리므로 한 줄을 더하면 화면만 번거롭다(D028).
+  - 확인 전: 실기기에서도 같은지, 위치를 끄면 선택기가 메타데이터를 다시 쓰면서 MakerNote·XMP·IPTC 등 다른 항목도 바뀌는지(합성 사진에는 MakerNote가 없다). 현장 실증에서 실제 a7C II JPEG로 본다(`docs/field-test.md` 끝난 뒤 5). 시뮬레이터 시험은 `MetadataProbeUITests.testPickerLocationOption`(`TEST_RUNNER_SBSN_PICKER_LOCATION=off`)으로 다시 할 수 있다.
 
 ### 4.4 고객 사진 앱 저장 뒤에도 남는지(실기기 확인)
 
