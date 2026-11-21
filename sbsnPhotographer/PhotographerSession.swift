@@ -467,6 +467,11 @@ final class PhotographerSession {
         guard let ticket, ticket.canCancel, let uid else { return }
         do {
             try await TicketService.cancel(ticket: ticket, by: uid)
+            // 서버가 취소를 받았으면 리스너를 기다리지 않고 뗀다. 잠금이 읽을 수 없는 티켓을 가리켜
+            // 이 티켓의 리스너가 끊긴 뒤에도 홈에 취소한 매칭이 남아 "촬영 가능"을 못 켜는 일을 막는다.
+            if self.ticket?.id == ticket.id {
+                detachTicket()
+            }
         } catch {
             errorMessage = "취소하지 못했습니다: \(error.localizedDescription)"
         }
