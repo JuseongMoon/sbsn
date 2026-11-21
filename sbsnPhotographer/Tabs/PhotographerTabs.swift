@@ -162,6 +162,7 @@ final class LocationAuthorizationStatus: NSObject, CLLocationManagerDelegate {
 struct PhotographerDeveloperPage: View {
     @Environment(PhotographerSession.self) private var session
     @State private var showsChatReport = false
+    @State private var testPhotosLeft: Int?
     @State private var showsChatBlock = false
 
     var body: some View {
@@ -184,6 +185,17 @@ struct PhotographerDeveloperPage: View {
                     .accessibilityIdentifier("dev.metadataProbe")
                 Button("고르기 화면 시험(서버 없음)") { session.openDebugGallery() }
                     .accessibilityIdentifier("dev.debugGallery")
+                // 자동 시험이 넣은 사진(`Documents/TestPhotos/`)은 기기에서 직접 지울 길이 없어(devicectl은 복사만) 여기서 지운다.
+                Button("시험 사진 폴더 지우기(Documents/TestPhotos)", role: .destructive) {
+                    let folder = URL.documentsDirectory.appending(path: "TestPhotos", directoryHint: .isDirectory)
+                    try? FileManager.default.removeItem(at: folder)
+                    testPhotosLeft = (try? FileManager.default.contentsOfDirectory(atPath: folder.path(percentEncoded: false)))?.count ?? 0
+                }
+                .accessibilityIdentifier("dev.deleteTestPhotos")
+                if let testPhotosLeft {
+                    Text("시험 사진 남은 파일 \(testPhotosLeft)개")
+                        .accessibilityIdentifier("dev.testPhotosLeft")
+                }
             }
             #endif
             Section("예시 화면 전체(\(PhotographerFeatures.all.count))") {

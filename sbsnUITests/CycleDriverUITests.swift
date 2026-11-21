@@ -30,7 +30,19 @@ final class CycleDriverUITests: XCTestCase {
     func test_P1_photographerGoesAvailable() throws {
         let app = activatePhotographer()
         let toggle = app.switches["photographer.available"]
+        // 공개한 촬영 같은 하위 화면에 있으면 뒤로 가기로 홈까지 나간다.
+        for _ in 0..<3 where !toggle.waitForExistence(timeout: 3) {
+            let back = app.navigationBars.buttons.element(boundBy: 0)
+            guard back.exists else { break }
+            back.tap()
+        }
         XCTAssertTrue(toggle.waitForExistence(timeout: 20), "촬영 가능 토글이 없음")
+        // 켜져 있는데 이름이 `SBSN_NAME`과 다르면 끄고 이름을 바꾼 뒤 다시 켠다.
+        let current = app.textFields["photographer.name"]
+        if (toggle.value as? String) == "1", current.exists, (current.value as? String) != photographerName {
+            tapSwitch(toggle)
+            XCTAssertTrue(waitUntil(timeout: 10) { (toggle.value as? String) != "1" }, "촬영 가능을 끄지 못함")
+        }
         if (toggle.value as? String) != "1" {
             let name = app.textFields["photographer.name"]
             XCTAssertTrue(name.waitForExistence(timeout: 5))
@@ -46,6 +58,16 @@ final class CycleDriverUITests: XCTestCase {
                       "위치 공유 상태: \(location.label) \(String(describing: location.value))")
         attachScreenshot("P1 촬영 가능", app: app)
         XCUIDevice.shared.press(.home)
+    }
+
+    /// 진단: 작가 홈의 매칭 카드와 "촬영 가능" 토글 상태를 출력한다(취소 뒤 홈이 비었는지 볼 때).
+    func test_P0_photographerDumpsHome() throws {
+        let app = activatePhotographer()
+        let toggle = app.switches["photographer.available"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 20), "촬영 가능 토글이 없음")
+        let cards = app.buttons.matching(NSPredicate(format: "label BEGINSWITH '새 촬영 요청'"))
+        print("SBSN 작가 홈: 토글 \(toggle.value as? String ?? "-") 누를 수 있음 \(toggle.isEnabled) 매칭 카드 \(cards.count)개")
+        attachScreenshot("P0 작가 홈", app: app)
     }
 
     /// 매칭된 티켓 화면을 열고(알림 대신 앱을 직접 앞으로) 고객 메시지를 확인한 뒤 시작을 누른다.
@@ -98,6 +120,25 @@ final class CycleDriverUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["공개한 촬영"].waitForExistence(timeout: 300), "공개되지 않음")
         print("SBSN 공개됨 \(Date().ISO8601Format(.iso8601.time(includingFractionalSeconds: true))) 누르고 \(String(format: "%.1f", Date().timeIntervalSince(tappedAt)))초")
         attachScreenshot("P14 공개", app: app)
+    }
+
+    /// 정리: 개발 메뉴에서 자동 시험용 사진 폴더(`Documents/TestPhotos/`)를 지운다.
+    func test_P15_photographerDeletesTestPhotos() throws {
+        let app = photographerApp
+        app.activate()
+        app.tabBars.buttons["마이"].tap()
+        let developer = app.descendants(matching: .any)["my.developer"].firstMatch
+        for _ in 0..<8 where !(developer.exists && developer.isHittable) { app.swipeUp() }
+        developer.tap()
+        let delete = app.buttons["dev.deleteTestPhotos"].firstMatch
+        for _ in 0..<8 where !(delete.exists && delete.isHittable) { app.swipeUp() }
+        delete.tap()
+        let left = app.staticTexts["dev.testPhotosLeft"]
+        XCTAssertTrue(left.waitForExistence(timeout: 10), "지운 결과가 보이지 않음")
+        print("SBSN 정리 \(left.label)")
+        XCTAssertEqual(left.label, "시험 사진 남은 파일 0개")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tabBars.buttons["촬영"].tap()
     }
 
     /// 작가 앱을 백그라운드로 보낸다(구매 알림으로 깨어나는지 보는 단계 앞).
@@ -408,6 +449,39 @@ final class CycleDriverUITests: XCTestCase {
         XCTAssertTrue(waitUntil(timeout: 60) { cells.count > 0 }, "지난 촬영 갤러리에 사진이 없음")
         print("SBSN 내 사진 복원 \(Date().ISO8601Format(.iso8601.time(includingFractionalSeconds: true))) 사진 \(cells.count)장")
         attachScreenshot("C19 지난 촬영 갤러리", app: app)
+    }
+
+    /// 정리: 고객 앱 개발 메뉴 "사진 앱 저장 시험"에서 구매 저장본(원본 이름이 `<사진 ID>.jpg`)만 사진 앱에서 지운다.
+    /// 사진 전체 접근 권한과 삭제 확인 창이 뜬다. 지운 사진은 최근 삭제된 항목으로 간다.
+    func test_C20_customerDeletesSavedPurchases() throws {
+        let app = customerApp
+        app.activate()
+        app.tabBars.buttons["마이"].tap()
+        let developer = app.descendants(matching: .any)["my.developer"].firstMatch
+        for _ in 0..<8 where !(developer.exists && developer.isHittable) { app.swipeUp() }
+        developer.tap()
+        let link = app.buttons["사진 앱 저장 시험"].firstMatch
+        for _ in 0..<8 where !(link.exists && link.isHittable) { app.swipeUp() }
+        link.tap()
+        app.buttons["probe.deleteSaved"].firstMatch.tap()
+        let done = app.staticTexts["끝"]
+        XCTAssertTrue(waitUntil(timeout: 60) {
+            let alert = springboard.alerts.firstMatch
+            if alert.exists {
+                let delete = alert.buttons["삭제"]
+                if delete.exists {
+                    print("SBSN 삭제 확인: \(alert.label)")
+                    delete.tap()
+                } else {
+                    allowSystemAlerts(seconds: 2)
+                }
+            }
+            return done.exists
+        }, "저장본 지우기가 끝나지 않음")
+        for line in app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '찾음' OR label BEGINSWITH '지움' OR label BEGINSWITH '지우지' OR label BEGINSWITH '사진 전체'")).allElementsBoundByIndex {
+            print("SBSN 정리 \(line.label)")
+        }
+        attachScreenshot("C20 저장본 지우기", app: app)
     }
 
     /// 10분 넘게 갱신이 없는 작가가 지도에서 빠지는지 본다. 관리자가 갱신 시각만 다른 공개 상태 셋을 미리 넣어 둔다.
