@@ -78,15 +78,15 @@ enum PhotographerSampleData {
     }
 
     static let shoots = [
-        Shoot(section: "11월 21일", title: "14:10 · 서촌 · 고객 2명 · 받은 사진 42 · 판매 3 · 전달 완료",
-              timeline: [("확정", "14:02"), ("만남", "14:08"), ("시작", "14:10"), ("종료", "14:21"), ("전달 완료", "14:35")],
-              received: 42, sold: 3, delivered: 3, deliveryState: "전달 완료"),
-        Shoot(section: "11월 21일", title: "11:30 · 경복궁 · 고객 1명 · 받은 사진 38 · 판매 2 · 전달 대기 1장",
-              timeline: [("확정", "11:22"), ("만남", "11:27"), ("시작", "11:30"), ("종료", "11:41"), ("전달 완료", "-")],
-              received: 38, sold: 2, delivered: 1, deliveryState: "전달 대기 1장"),
-        Shoot(section: "11월 20일", title: "16:05 · 서촌 · 고객 2명 · 받은 사진 45 · 판매 4 · 전달 완료",
-              timeline: [("확정", "15:58"), ("만남", "16:03"), ("시작", "16:05"), ("종료", "16:16"), ("전달 완료", "16:30")],
-              received: 45, sold: 4, delivered: 4, deliveryState: "전달 완료"),
+        Shoot(section: "11월 21일", title: "14:10 · 서촌 · 고객 2명 · 공개 7 · 판매 3",
+              timeline: [("확정", "14:02"), ("만남", "14:08"), ("시작", "14:10"), ("종료", "14:21"), ("공개", "14:31")],
+              received: 7, sold: 3, delivered: 3, deliveryState: "공개 7장"),
+        Shoot(section: "11월 21일", title: "11:30 · 경복궁 · 고객 1명 · 공개 6 · 판매 2",
+              timeline: [("확정", "11:22"), ("만남", "11:27"), ("시작", "11:30"), ("종료", "11:41"), ("공개", "11:53")],
+              received: 6, sold: 2, delivered: 2, deliveryState: "공개 6장"),
+        Shoot(section: "11월 20일", title: "16:05 · 서촌 · 고객 2명 · 공개 8 · 판매 4",
+              timeline: [("확정", "15:58"), ("만남", "16:03"), ("시작", "16:05"), ("종료", "16:16"), ("공개", "16:27")],
+              received: 8, sold: 4, delivered: 4, deliveryState: "공개 8장"),
     ]
 
     struct Payout: Identifiable {
@@ -136,7 +136,7 @@ enum PhotographerSampleData {
     static let contract = SampleDocument(title: "작가 계약서(예시)", clauses: [
         .init("제1조 목적", "십분스냅 첫 검증 기간(M1)의 촬영 업무 조건을 정합니다. 예시 문장입니다."),
         .init("제2조 근무와 보상", "지정 시간 동안 시간당 15,000원, 정상 촬영 1건당 3,000원을 지급합니다."),
-        .init("제3조 사진", "촬영 원본은 정해진 기간 뒤 폰에서 지웁니다."),
+        .init("제3조 사진", "앱 안의 고른 사진 사본은 공개하면 지웁니다. 서버의 사진은 올린 뒤 30일이 지나면 지웁니다."),
     ])
     static let maskedAccount = "○○은행 ****5678"
 

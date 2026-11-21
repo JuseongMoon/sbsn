@@ -36,10 +36,9 @@ struct SampleHistoryDetailScreen: View {
                 ForEach(shoot.timeline, id: \.0) { LabeledContent($0.0, value: $0.1) }
             }
             Section("사진") {
-                LabeledContent("받은 사진", value: "\(shoot.received)장")
-                LabeledContent("미리보기", value: "\(shoot.received)장")
+                LabeledContent("공개한 사진", value: "\(shoot.received)장")
                 LabeledContent("판매", value: "\(shoot.sold)장")
-                LabeledContent("전달", value: "\(shoot.delivered)장")
+                LabeledContent("고객 저장", value: "\(shoot.delivered)장")
             }
             SampleNoticeSection()
         }
@@ -283,7 +282,7 @@ struct SampleRegistrationScreen: View {
             } header: {
                 Text("등록 장비")
             } footer: {
-                Text("장비 일련번호는 표시하지 않습니다.")
+                Text("장비 일련번호는 프로필에 표시하지 않습니다. 사진 메타데이터의 일련번호는 구매한 고객에게 그대로 전달됩니다.")
             }
             SampleNoticeSection()
         }
@@ -319,7 +318,7 @@ struct SampleOriginalsScreen: View {
                 Button("구매되지 않은 원본 지우기", role: .destructive) { status = "지웠습니다(예시, 실제로 지우지 않음)" }
                 SampleStatus(status)
             } footer: {
-                Text("원본의 위치 정보는 올리기 전에 지웁니다(정책 U11 가안).")
+                Text("올린 사진의 메타데이터(촬영 위치, 일련번호 등)는 구매한 고객에게 그대로 전달됩니다. 빼고 싶은 항목은 편집 앱에서 내보낼 때 지워 주세요.")
             }
             SampleNoticeSection()
         }
@@ -414,7 +413,7 @@ struct SamplePhotographerDeletionScreen: View {
             Section("지워지는 것") {
                 Text("작가 계정과 프로필·포트폴리오")
                 Text("정산 기록은 세법이 정한 기간 동안 보관한 뒤 지웁니다")
-                Text("이 폰의 원본 사진은 앱을 지우면 함께 지워집니다")
+                Text("앱 안의 고른 사진 사본은 공개하면 지워집니다. 사진 앱의 원본은 그대로 남습니다")
             }
             Section {
                 Button("삭제 요청", role: .destructive) { status = "삭제를 요청했습니다(예시, 실제로 지우지 않음)" }
