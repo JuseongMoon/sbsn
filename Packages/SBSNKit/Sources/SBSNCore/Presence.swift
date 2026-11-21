@@ -90,6 +90,12 @@ public struct PhotographerPresence: Sendable, Equatable, Identifiable {
     }
 
     /// 표시 이름으로 쓸 수 있게 다듬는다. 비어 있거나 너무 길면 nil.
+    /// 촬영 종료·취소 때 같은 쓰기에서 작가 잠금을 풀지(공통 명세). 공개 상태 문서가 있고 잠금이 바로 이 티켓일 때만 푼다.
+    /// 문서가 없거나(24시간 보존으로 지워짐), 다른 티켓으로 잠겼거나, 이미 풀렸으면 그 문서는 건드리지 않고 티켓·고객 잠금만 처리한다.
+    public static func releasesLock(presenceExists: Bool, activeTicketId: String?, for ticketId: String) -> Bool {
+        presenceExists && activeTicketId == ticketId
+    }
+
     public static func validDisplayName(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.count < displayNameLimit else { return nil }

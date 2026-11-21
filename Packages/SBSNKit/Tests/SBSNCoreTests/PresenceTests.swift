@@ -52,3 +52,11 @@ struct PresenceTests {
         #expect(PhotographerPresence.validDisplayName(String(repeating: "가", count: PhotographerPresence.displayNameLimit)) == nil)
     }
 }
+
+/// 종료·취소 때 작가 잠금을 풀지: 공개 상태 문서가 있고 잠금이 이 티켓일 때만(공통 명세, 웹 규칙과 같은 조건).
+@Test func photographerLockIsReleasedOnlyWhenHeldByThisTicket() {
+    #expect(PhotographerPresence.releasesLock(presenceExists: true, activeTicketId: "T1", for: "T1"))
+    #expect(!PhotographerPresence.releasesLock(presenceExists: false, activeTicketId: nil, for: "T1"), "문서 없음(24시간 보존으로 지워짐)")
+    #expect(!PhotographerPresence.releasesLock(presenceExists: true, activeTicketId: "T2", for: "T1"), "다른 티켓으로 잠김")
+    #expect(!PhotographerPresence.releasesLock(presenceExists: true, activeTicketId: nil, for: "T1"), "이미 풀림")
+}

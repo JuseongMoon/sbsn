@@ -115,26 +115,52 @@ public enum TicketService {
         try? await ticketDocument(ticketId).updateData(["photographerAckAt": FieldValue.serverTimestamp()])
     }
 
-    /// 작가: 촬영 종료. 같은 배치로 자기 잠금을 풀고 "촬영 가능"도 끈다(선별 티켓은 종료와 잠금 해제가 한 쓰기여야 한다).
+    /// 작가: 촬영 종료. 같은 트랜잭션에서 자기 잠금이 이 티켓이면 풀고 "촬영 가능"도 끈다(선별 티켓은 종료와 잠금 해제가 한 쓰기여야 한다).
+    /// 공개 상태 문서가 없거나 다른 티켓으로 잠겼으면 그 문서는 건드리지 않는다(`PhotographerPresence.releasesLock`).
     /// 공개 전에도 다음 매칭을 받을 수 있다(D040). 다음 촬영은 작가가 직접 "촬영 가능"을 켠다.
     public static func end(ticketId: String, photographerUid: String) async throws {
-        let batch = db.batch()
-        batch.updateData(["endedAt": FieldValue.serverTimestamp()], forDocument: ticketDocument(ticketId))
-        batch.updateData([
-            "activeTicketId": NSNull(),
-            "isAvailable": false,
-            "updatedAt": FieldValue.serverTimestamp(),
-        ], forDocument: PhotographerDirectory.collection.document(photographerUid))
-        try await batch.commit()
+        let ticketRef = ticketDocument(ticketId)
+        let presenceRef = PhotographerDirectory.collection.document(photographerUid)
+        let refs = (ticket: ticketRef, presence: presenceRef)
+        _ = try await db.runTransaction { transaction, errorPointer in
+            do {
+                let presence = try transaction.getDocument(refs.presence)
+                transaction.updateData(["endedAt": FieldValue.serverTimestamp()], forDocument: refs.ticket)
+                if PhotographerPresence.releasesLock(presenceExists: presence.exists,
+                                                     activeTicketId: presence.data()?["activeTicketId"] as? String, for: ticketId) {
+                    transaction.updateData([
+                        "activeTicketId": NSNull(),
+                        "isAvailable": false,
+                        "updatedAt": FieldValue.serverTimestamp(),
+                    ], forDocument: refs.presence)
+                }
+            } catch {
+                errorPointer?.pointee = error as NSError
+            }
+            return nil
+        }
     }
 
     /// 고객: 촬영 중 작가가 사라졌을 때의 종료. 작가 시작 뒤 유예 시간이 지나야 규칙이 허용한다.
-    /// 선별 티켓은 같은 배치로 작가 잠금도 풀어야 한다(규칙이 종료와 잠금 해제를 함께 본다).
+    /// 작가 잠금이 아직 이 티켓이면 같은 트랜잭션에서 푼다(규칙이 종료와 잠금 해제를 함께 본다). 없거나 다른 잠금이면 건드리지 않는다.
     public static func endAsCustomer(ticket: TicketRecord) async throws {
-        let batch = db.batch()
-        batch.updateData(["endedAt": FieldValue.serverTimestamp()], forDocument: ticketDocument(ticket.id))
-        batch.updateData(["activeTicketId": NSNull()], forDocument: PhotographerDirectory.collection.document(ticket.photographerUid))
-        try await batch.commit()
+        let ticketRef = ticketDocument(ticket.id)
+        let presenceRef = PhotographerDirectory.collection.document(ticket.photographerUid)
+        let refs = (ticket: ticketRef, presence: presenceRef)
+        let ticketId = ticket.id
+        _ = try await db.runTransaction { transaction, errorPointer in
+            do {
+                let presence = try transaction.getDocument(refs.presence)
+                transaction.updateData(["endedAt": FieldValue.serverTimestamp()], forDocument: refs.ticket)
+                if PhotographerPresence.releasesLock(presenceExists: presence.exists,
+                                                     activeTicketId: presence.data()?["activeTicketId"] as? String, for: ticketId) {
+                    transaction.updateData(["activeTicketId": NSNull()], forDocument: refs.presence)
+                }
+            } catch {
+                errorPointer?.pointee = error as NSError
+            }
+            return nil
+        }
     }
 
     /// 고객의 끝난 선별 촬영들(최근 종료 순). 내 사진 탭이 기기를 바꾸거나 다시 설치한 뒤에도 지난 촬영을 찾는 데 쓴다.
@@ -148,27 +174,40 @@ public enum TicketService {
         return snapshot.documents.compactMap { FirestoreCodec.ticket(id: $0.documentID, data: $0.data()) }
     }
 
-    /// 둘 다 시작하기 전의 취소. 트랜잭션으로 자기 쪽 잠금을 함께 푼다(고객은 작가 잠금도 푼다).
+    /// 둘 다 시작하기 전의 취소. 트랜잭션으로 잠금을 함께 푼다: 고객 잠금(고객이 취소할 때), 작가 잠금(이 티켓으로 잠겨 있을 때만).
+    /// 작가 공개 상태 문서가 없거나 다른 티켓으로 잠겼거나 이미 풀렸으면 그 문서는 건드리지 않는다(`PhotographerPresence.releasesLock`).
     public static func cancel(ticket: TicketRecord, by uid: String) async throws {
         guard let role = ticket.role(of: uid) else { return }
         let ticketRef = ticketDocument(ticket.id)
         let presenceRef = PhotographerDirectory.collection.document(ticket.photographerUid)
         let customerRef = db.collection("customers").document(ticket.customerUid)
         let refs = (ticket: ticketRef, presence: presenceRef, customer: customerRef)
-        _ = try await db.runTransaction { transaction, _ in
-            transaction.updateData([
-                "cancelledAt": FieldValue.serverTimestamp(),
-                "cancelledBy": uid,
-            ], forDocument: refs.ticket)
-            switch role {
-            case .customer:
-                transaction.updateData(["activeTicketId": NSNull()], forDocument: refs.presence)
-                transaction.updateData(["activeTicketId": NSNull()], forDocument: refs.customer)
-            case .photographer:
+        let ticketId = ticket.id
+        _ = try await db.runTransaction { transaction, errorPointer in
+            do {
+                let presence = try transaction.getDocument(refs.presence)
+                let releases = PhotographerPresence.releasesLock(presenceExists: presence.exists,
+                                                                 activeTicketId: presence.data()?["activeTicketId"] as? String, for: ticketId)
                 transaction.updateData([
-                    "activeTicketId": NSNull(),
-                    "updatedAt": FieldValue.serverTimestamp(),
-                ], forDocument: refs.presence)
+                    "cancelledAt": FieldValue.serverTimestamp(),
+                    "cancelledBy": uid,
+                ], forDocument: refs.ticket)
+                switch role {
+                case .customer:
+                    if releases {
+                        transaction.updateData(["activeTicketId": NSNull()], forDocument: refs.presence)
+                    }
+                    transaction.updateData(["activeTicketId": NSNull()], forDocument: refs.customer)
+                case .photographer:
+                    if releases {
+                        transaction.updateData([
+                            "activeTicketId": NSNull(),
+                            "updatedAt": FieldValue.serverTimestamp(),
+                        ], forDocument: refs.presence)
+                    }
+                }
+            } catch {
+                errorPointer?.pointee = error as NSError
             }
             return nil
         }
