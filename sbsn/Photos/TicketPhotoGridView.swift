@@ -39,7 +39,7 @@ struct TicketPhotoGridView: View {
         .navigationDestination(for: String.self) { fileName in
             PhotoDetailView(ticket: ticket, fileName: fileName, photos: photos, workspace: workspace)
         }
-        .navigationDestination(for: PlannedFeature.self) { PlannedFeaturePage($0) }
+        .navigationDestination(for: PlannedFeature.self) { CustomerSampleScreen($0) }
         // 목록 리스너는 여러 번 불러도 하나만 붙는다. 누락 사진 확인은 `TicketBackgroundWork`가 탭과 무관하게 돌린다.
         .task { workspace.delivery.startListening() }
     }

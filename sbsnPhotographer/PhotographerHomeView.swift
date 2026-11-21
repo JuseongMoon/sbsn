@@ -64,8 +64,8 @@ struct PhotographerHomeView: View {
                         }
                     }
                 }
-                PlannedFeatureLink(PhotographerFeatures.activityArea)
-                PlannedFeatureLink(PhotographerFeatures.breakTime)
+                PhotographerSampleLink(PhotographerFeatures.activityArea)
+                PhotographerSampleLink(PhotographerFeatures.breakTime)
             } header: {
                 Text("대기")
             } footer: {
@@ -73,7 +73,7 @@ struct PhotographerHomeView: View {
             }
 
             Section {
-                PlannedFeatureLink(PhotographerFeatures.requestPolicy)
+                PhotographerSampleLink(PhotographerFeatures.requestPolicy)
             } header: {
                 Text("새 요청")
             } footer: {

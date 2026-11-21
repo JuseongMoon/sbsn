@@ -13,8 +13,13 @@ struct PhotographerTicketView: View {
     @State private var isWorking = false
     /// 촬영 중에는 홈으로 나갈 수 없어, 현장에서 업로드 설정을 바꿔 비교할 수 있게 측정 항목을 이 화면("…" 메뉴)에서 켠다.
     @State private var showsMeasurements = false
-    /// "…" 메뉴에서 연 빈 페이지
+    /// "…" 메뉴에서 연 예시 화면
     @State private var openedFeature: PlannedFeature?
+    /// 채팅 "…" 메뉴의 신고·차단(예시 시트, D032). 화면과 채팅 시트에서 따로 띄운다.
+    @State private var showsReport = false
+    @State private var showsBlock = false
+    @State private var showsChatReport = false
+    @State private var showsChatBlock = false
 
     var body: some View {
         Group {
@@ -31,7 +36,9 @@ struct PhotographerTicketView: View {
                 ContentUnavailableView("진행 중인 촬영이 없습니다", systemImage: "camera")
             }
         }
-        .navigationDestination(item: $openedFeature) { PlannedFeaturePage($0) }
+        .navigationDestination(item: $openedFeature) { PhotographerSampleScreen($0) }
+        .sampleChatSafetySheets(target: "고객", cancelsShoot: session.ticket?.canCancel ?? false,
+                                showsReport: $showsReport, showsBlock: $showsBlock)
         .sheet(isPresented: $showsChat) {
             if let ticket = session.ticket, let uid = session.uid {
                 NavigationStack {
@@ -39,8 +46,18 @@ struct PhotographerTicketView: View {
                         .navigationTitle("고객과 채팅")
                         .navigationBarTitleDisplayMode(.inline)
                         .toolbar {
-                            Button("닫기") { showsChat = false }
+                            ToolbarItem(placement: .topBarLeading) {
+                                Menu("더 보기", systemImage: "ellipsis.circle") {
+                                    SampleChatSafetyMenuItems(showsReport: $showsChatReport, showsBlock: $showsChatBlock)
+                                }
+                                .accessibilityIdentifier("chat.more")
+                            }
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button("닫기") { showsChat = false }
+                            }
                         }
+                        .sampleChatSafetySheets(target: "고객", cancelsShoot: false,
+                                                showsReport: $showsChatReport, showsBlock: $showsChatBlock)
                 }
             }
         }
@@ -116,7 +133,7 @@ struct PhotographerTicketView: View {
         }
     }
 
-    /// "…" 메뉴의 빈 페이지 항목(만나기·촬영 화면 공통)
+    /// "…" 메뉴의 예시 화면 항목과 채팅 신고·차단(만나기·촬영 화면 공통)
     @ViewBuilder
     private var plannedMenuItems: some View {
         Button(PhotographerFeatures.customerBrief.title, systemImage: PhotographerFeatures.customerBrief.systemImage) {
@@ -125,6 +142,8 @@ struct PhotographerTicketView: View {
         Button(PhotographerFeatures.safety.title, systemImage: PhotographerFeatures.safety.systemImage) {
             openedFeature = PhotographerFeatures.safety
         }
+        Divider()
+        SampleChatSafetyMenuItems(showsReport: $showsReport, showsBlock: $showsBlock)
     }
 
     private func shootingBar(_ ticket: TicketRecord) -> some View {

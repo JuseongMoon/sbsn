@@ -20,12 +20,12 @@ struct MyPhotosTab: View {
                     }
                 }
                 Section("지난 촬영") {
-                    PlannedFeatureLink(CustomerFeatures.album)
-                    PlannedFeatureLink(CustomerFeatures.orders)
+                    CustomerSampleLink(CustomerFeatures.album)
+                    CustomerSampleLink(CustomerFeatures.orders)
                 }
                 Section {
-                    PlannedFeatureLink(CustomerFeatures.retouch)
-                    PlannedFeatureLink(CustomerFeatures.shareAndPrint)
+                    CustomerSampleLink(CustomerFeatures.retouch)
+                    CustomerSampleLink(CustomerFeatures.shareAndPrint)
                 } header: {
                     Text("추가 서비스")
                 } footer: {

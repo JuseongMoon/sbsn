@@ -11,18 +11,18 @@ struct CustomerMyTab: View {
         NavigationStack {
             List {
                 Section("계정") {
-                    PlannedFeatureLink(CustomerFeatures.profile)
-                    PlannedFeatureLink(CustomerFeatures.accountLink)
+                    CustomerSampleLink(CustomerFeatures.profile)
+                    CustomerSampleLink(CustomerFeatures.accountLink)
                 }
                 CustomerPermissionsSection()
                 Section("고객지원") {
-                    PlannedFeatureLink(CustomerFeatures.help)
-                    PlannedFeatureLink(CustomerFeatures.inquiry)
-                    PlannedFeatureLink(CustomerFeatures.refund)
+                    CustomerSampleLink(CustomerFeatures.help)
+                    CustomerSampleLink(CustomerFeatures.inquiry)
+                    CustomerSampleLink(CustomerFeatures.refund)
                 }
                 Section {
-                    PlannedFeatureLink(CustomerFeatures.terms)
-                    PlannedFeatureLink(CustomerFeatures.events)
+                    CustomerSampleLink(CustomerFeatures.terms)
+                    CustomerSampleLink(CustomerFeatures.events)
                 }
                 Section {
                     NavigationLink("개발") { CustomerDeveloperPage() }
@@ -110,8 +110,11 @@ struct CustomerPermissionsSection: View {
 }
 
 /// 시험용 메뉴. 예전 지도 화면 벌레 아이콘 메뉴를 옮겼다.
+/// "예시 화면 전체"는 티켓이 있어야 닿는 예시 화면(촬영 안내, 추천 순서 등)도 시뮬레이터에서 열 수 있게 모아 둔 것이다.
 struct CustomerDeveloperPage: View {
     @Environment(CustomerSession.self) private var session
+    @State private var showsChatReport = false
+    @State private var showsChatBlock = false
 
     var body: some View {
         List {
@@ -138,7 +141,13 @@ struct CustomerDeveloperPage: View {
                     Button("닫기") { session.dismissDebugMessage() }
                 }
             }
+            Section("예시 화면 전체(\(CustomerFeatures.all.count))") {
+                ForEach(CustomerFeatures.all) { CustomerSampleLink($0) }
+                Button("채팅 신고 시트") { showsChatReport = true }
+                Button("채팅 차단 시트") { showsChatBlock = true }
+            }
         }
+        .sampleChatSafetySheets(target: "하린 작가", cancelsShoot: true, showsReport: $showsChatReport, showsBlock: $showsChatBlock)
         .navigationTitle("개발")
         .navigationBarTitleDisplayMode(.inline)
     }

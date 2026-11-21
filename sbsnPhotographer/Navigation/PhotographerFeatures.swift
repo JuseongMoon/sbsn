@@ -1,7 +1,11 @@
 import SBSNUI
 
-/// 작가 앱에서 기획에는 있지만 아직 만들지 않은 메뉴(빈 페이지). 근거는 총괄 문서 `UI_WIREFRAME_PLAN.md` 2절.
+/// 작가 앱에서 기획에는 있지만 아직 실제 데이터와 연결하지 않은 메뉴(예시 화면, D032). 근거는 총괄 문서 `UI_WIREFRAME_PLAN.md` 2절.
 enum PhotographerFeatures {
+    /// 명세 순서(P1~P18). 개발 메뉴의 "예시 화면 전체"가 쓴다.
+    static let all = [activityArea, breakTime, requestPolicy, customerBrief, safety, timer, cameraGuide, photoReview,
+                      history, sales, settlement, feedback, disputes, portfolio, registration, originals, support, terms]
+
     // 촬영 탭
     static let activityArea = PlannedFeature(
         id: "activityArea", title: "활동 위치·반경", summary: "촬영할 지역과 이동할 수 있는 거리를 정하는 화면이 들어갈 자리입니다.",

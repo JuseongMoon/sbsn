@@ -1,7 +1,11 @@
 import SBSNUI
 
-/// 고객 앱에서 기획에는 있지만 아직 만들지 않은 메뉴(빈 페이지). 근거는 총괄 문서 `UI_WIREFRAME_PLAN.md` 1절.
+/// 고객 앱에서 기획에는 있지만 아직 실제 데이터와 연결하지 않은 메뉴(예시 화면, D032). 근거는 총괄 문서 `UI_WIREFRAME_PLAN.md` 1절.
 enum CustomerFeatures {
+    /// 명세 순서(C1~C19). 개발 메뉴의 "예시 화면 전체"가 쓴다.
+    static let all = [photographerList, conditions, photographerProfile, briefing, safety, recommendation, basket, review, events,
+                      album, orders, retouch, shareAndPrint, profile, accountLink, help, inquiry, refund, terms]
+
     // 촬영 탭
     static let photographerList = PlannedFeature(
         id: "photographerList", title: "작가 목록", summary: "주변 작가를 목록으로 비교하는 화면이 들어갈 자리입니다.",

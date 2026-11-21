@@ -11,15 +11,15 @@ struct PhotographerHistoryTab: View {
         NavigationStack {
             List {
                 Section("촬영") {
-                    PlannedFeatureLink(PhotographerFeatures.history)
-                    PlannedFeatureLink(PhotographerFeatures.sales)
+                    PhotographerSampleLink(PhotographerFeatures.history)
+                    PhotographerSampleLink(PhotographerFeatures.sales)
                 }
                 Section("정산") {
-                    PlannedFeatureLink(PhotographerFeatures.settlement)
+                    PhotographerSampleLink(PhotographerFeatures.settlement)
                 }
                 Section("품질") {
-                    PlannedFeatureLink(PhotographerFeatures.feedback)
-                    PlannedFeatureLink(PhotographerFeatures.disputes)
+                    PhotographerSampleLink(PhotographerFeatures.feedback)
+                    PhotographerSampleLink(PhotographerFeatures.disputes)
                 }
             }
             .navigationTitle("내역")
@@ -33,14 +33,14 @@ struct PhotographerMyTab: View {
         NavigationStack {
             List {
                 Section("작가 정보") {
-                    PlannedFeatureLink(PhotographerFeatures.portfolio)
-                    PlannedFeatureLink(PhotographerFeatures.registration)
-                    PlannedFeatureLink(PhotographerFeatures.originals)
+                    PhotographerSampleLink(PhotographerFeatures.portfolio)
+                    PhotographerSampleLink(PhotographerFeatures.registration)
+                    PhotographerSampleLink(PhotographerFeatures.originals)
                 }
                 PhotographerPermissionsSection()
                 Section {
-                    PlannedFeatureLink(PhotographerFeatures.support)
-                    PlannedFeatureLink(PhotographerFeatures.terms)
+                    PhotographerSampleLink(PhotographerFeatures.support)
+                    PhotographerSampleLink(PhotographerFeatures.terms)
                 }
                 Section {
                     NavigationLink("개발") { PhotographerDeveloperPage() }
@@ -136,8 +136,11 @@ final class LocationAuthorizationStatus: NSObject, CLLocationManagerDelegate {
 }
 
 /// 시험용 메뉴. 예전 홈 화면의 "개발" 섹션을 옮겼다.
+/// "예시 화면 전체"는 티켓이 있어야 닿는 예시 화면(고객 브리프, 타이머 등)도 시뮬레이터에서 열 수 있게 모아 둔 것이다.
 struct PhotographerDeveloperPage: View {
     @Environment(PhotographerSession.self) private var session
+    @State private var showsChatReport = false
+    @State private var showsChatBlock = false
 
     var body: some View {
         List {
@@ -158,7 +161,13 @@ struct PhotographerDeveloperPage: View {
                     Task { await session.resetAnonymousAccount() }
                 }
             }
+            Section("예시 화면 전체(\(PhotographerFeatures.all.count))") {
+                ForEach(PhotographerFeatures.all) { PhotographerSampleLink($0) }
+                Button("채팅 신고 시트") { showsChatReport = true }
+                Button("채팅 차단 시트") { showsChatBlock = true }
+            }
         }
+        .sampleChatSafetySheets(target: "고객", cancelsShoot: true, showsReport: $showsChatReport, showsBlock: $showsChatBlock)
         .navigationTitle("개발")
         .navigationBarTitleDisplayMode(.inline)
     }

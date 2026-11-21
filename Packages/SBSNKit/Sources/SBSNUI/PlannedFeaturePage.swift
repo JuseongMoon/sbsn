@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// 기획에는 있지만 아직 만들지 않은 메뉴 하나. 두 앱이 같은 빈 페이지(`PlannedFeaturePage`)로 보여 준다.
+/// 기획에는 있지만 아직 실제 데이터와 연결하지 않은 메뉴 하나. 두 앱이 예시(더미) 데이터로 채운 화면으로 보여 준다(D032).
 ///
-/// `id`는 시험 스크립트가 찾는 식별자(`planned.<id>`, 빈 페이지는 `placeholder.<id>`)에 쓴다.
+/// `id`는 시험 스크립트가 찾는 식별자에 쓴다: 목록 링크는 `planned.<id>`, 예시 화면 뿌리는 `sample.<id>`.
 public struct PlannedFeature: Hashable, Identifiable, Sendable {
     public let id: String
     public let title: String
@@ -21,51 +21,41 @@ public struct PlannedFeature: Hashable, Identifiable, Sendable {
     }
 }
 
-/// 준비 중인 메뉴의 빈 페이지.
-public struct PlannedFeaturePage: View {
+/// 목록에서 예시 화면으로 가는 행. 오른쪽에 "예시"를 붙여 실제로 동작하는 메뉴와 구분한다.
+public struct PlannedFeatureLink<Destination: View>: View {
     let feature: PlannedFeature
+    let destination: () -> Destination
 
-    public init(_ feature: PlannedFeature) {
+    public init(_ feature: PlannedFeature, @ViewBuilder destination: @escaping () -> Destination) {
         self.feature = feature
-    }
-
-    public var body: some View {
-        ContentUnavailableView {
-            Label("준비 중", systemImage: feature.systemImage)
-        } description: {
-            VStack(spacing: 12) {
-                Text(feature.summary)
-                if !feature.plannedItems.isEmpty {
-                    Text("기획: " + feature.plannedItems.joined(separator: " · "))
-                        .font(.footnote)
-                }
-            }
-        }
-        .navigationTitle(feature.title)
-        #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
-        .accessibilityIdentifier("placeholder.\(feature.id)")
-    }
-}
-
-/// 목록에서 빈 페이지로 가는 행. 오른쪽에 "준비 중"을 붙여 동작하는 메뉴와 구분한다.
-public struct PlannedFeatureLink: View {
-    let feature: PlannedFeature
-
-    public init(_ feature: PlannedFeature) {
-        self.feature = feature
+        self.destination = destination
     }
 
     public var body: some View {
         NavigationLink {
-            PlannedFeaturePage(feature)
+            destination()
         } label: {
             LabeledContent(feature.title) {
-                Text("준비 중")
+                Text("예시")
                     .font(.caption)
             }
         }
         .accessibilityIdentifier("planned.\(feature.id)")
+    }
+}
+
+public extension View {
+    /// 예시 화면의 뿌리: 제목과 식별자 `sample.<id>`. 뿌리는 `List`·`Form`·`ScrollView`여야 식별자가 하위 요소로 번지지 않는다.
+    func sampleScreen(_ feature: PlannedFeature) -> some View {
+        sampleScreen(title: feature.title, id: feature.id)
+    }
+
+    /// 하위 예시 화면(문서, 상세 등)
+    func sampleScreen(title: String, id: String) -> some View {
+        navigationTitle(title)
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .accessibilityIdentifier("sample.\(id)")
     }
 }

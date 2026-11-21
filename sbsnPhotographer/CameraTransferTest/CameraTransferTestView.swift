@@ -21,7 +21,7 @@ struct CameraTransferTestView: View {
             if showsPlannedFeatures {
                 Section {
                     NavigationLink {
-                        PlannedFeaturePage(PhotographerFeatures.timer)
+                        PhotographerSampleScreen(PhotographerFeatures.timer)
                     } label: {
                         LabeledContent("남은 시간", value: "--:--")
                     }
@@ -55,7 +55,7 @@ struct CameraTransferTestView: View {
                 }
                 .disabled(!model.isRunning)
                 if showsPlannedFeatures {
-                    PlannedFeatureLink(PhotographerFeatures.photoReview)
+                    PhotographerSampleLink(PhotographerFeatures.photoReview)
                 }
             }
 
@@ -71,7 +71,7 @@ struct CameraTransferTestView: View {
                 LabeledContent("사용자", value: CameraTransferTestModel.user)
                 LabeledContent("비밀번호", value: CameraTransferTestModel.password)
                 if showsPlannedFeatures {
-                    PlannedFeatureLink(PhotographerFeatures.cameraGuide)
+                    PhotographerSampleLink(PhotographerFeatures.cameraGuide)
                 }
             } header: {
                 Text("카메라 FTP 서버 설정값")

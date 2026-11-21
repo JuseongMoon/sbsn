@@ -72,7 +72,9 @@ struct PhotographerMapView: View {
                     map
                         .safeAreaInset(edge: .bottom) { bottomPanel }
                 case .list:
-                    PlannedFeaturePage(CustomerFeatures.photographerList)
+                    // 지도 화면 안에 붙는 예시 목록이라 제목은 그대로 "작가 찾기"로 둔다.
+                    SamplePhotographerList()
+                        .accessibilityIdentifier("sample.\(CustomerFeatures.photographerList.id)")
                 }
             }
             .safeAreaInset(edge: .top) { modePicker }
@@ -217,7 +219,7 @@ struct PhotographerMapView: View {
                     .foregroundStyle(.secondary)
             }
             NavigationLink {
-                PlannedFeaturePage(CustomerFeatures.photographerProfile)
+                CustomerSampleScreen(CustomerFeatures.photographerProfile)
             } label: {
                 Text(CustomerFeatures.photographerProfile.title)
                     .frame(maxWidth: .infinity)
@@ -248,13 +250,13 @@ struct PhotographerMapView: View {
     private var plannedMenus: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarTrailing) {
             NavigationLink {
-                PlannedFeaturePage(CustomerFeatures.conditions)
+                CustomerSampleScreen(CustomerFeatures.conditions)
             } label: {
                 Label(CustomerFeatures.conditions.title, systemImage: CustomerFeatures.conditions.systemImage)
             }
             .accessibilityIdentifier("planned.conditions")
             NavigationLink {
-                PlannedFeaturePage(CustomerFeatures.events)
+                CustomerSampleScreen(CustomerFeatures.events)
             } label: {
                 Label(CustomerFeatures.events.title, systemImage: CustomerFeatures.events.systemImage)
             }

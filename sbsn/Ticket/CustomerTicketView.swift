@@ -17,8 +17,13 @@ struct CustomerTicketView: View {
     @State private var isWorking = false
     @State private var actionError: String?
     @State private var showsPayment = false
-    /// 만나기 화면 "…" 메뉴에서 연 빈 페이지
+    /// 만나기 화면 "…" 메뉴에서 연 예시 화면
     @State private var openedFeature: PlannedFeature?
+    /// 채팅 "…" 메뉴의 신고·차단(예시 시트, D032). 만나기 화면과 채팅 시트에서 따로 띄운다.
+    @State private var showsMeetupReport = false
+    @State private var showsMeetupBlock = false
+    @State private var showsChatReport = false
+    @State private var showsChatBlock = false
     @State private var showsCancelConfirm = false
     @State private var showsEndConfirm = false
     @State private var showsChat = false
@@ -35,10 +40,12 @@ struct CustomerTicketView: View {
                 .navigationTitle(ticket?.photographerDisplayName ?? "촬영")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { toolbarContent }
-                .navigationDestination(item: $openedFeature) { PlannedFeaturePage($0) }
+                .navigationDestination(item: $openedFeature) { CustomerSampleScreen($0) }
                 .task { await tickClock() }
                 .task { await CustomerAppDelegate.requestAuthorizationIfNeeded() }
                 .sheet(isPresented: $showsChat) { chatSheet }
+                .sampleChatSafetySheets(target: chatPartner, cancelsShoot: ticket?.canCancel ?? false,
+                                        showsReport: $showsMeetupReport, showsBlock: $showsMeetupBlock)
                 .sheet(isPresented: $showsPayment) {
                     PaymentPlaceholderSheet(onContinue: {
                         showsPayment = false
@@ -156,7 +163,7 @@ struct CustomerTicketView: View {
                         Button("새 촬영 찾기") { session.forgetLocalTicket() }
                             .buttonStyle(.borderedProminent)
                         NavigationLink {
-                            PlannedFeaturePage(CustomerFeatures.review)
+                            CustomerSampleScreen(CustomerFeatures.review)
                         } label: {
                             Text("리뷰 남기기")
                         }
@@ -205,6 +212,8 @@ struct CustomerTicketView: View {
                     Button(CustomerFeatures.safety.title, systemImage: CustomerFeatures.safety.systemImage) {
                         openedFeature = CustomerFeatures.safety
                     }
+                    Divider()
+                    SampleChatSafetyMenuItems(showsReport: $showsMeetupReport, showsBlock: $showsMeetupBlock)
                 }
                 .accessibilityIdentifier("customer.meetup.more")
             }
@@ -217,12 +226,22 @@ struct CustomerTicketView: View {
                 .navigationTitle("채팅")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Menu("더 보기", systemImage: "ellipsis.circle") {
+                            SampleChatSafetyMenuItems(showsReport: $showsChatReport, showsBlock: $showsChatBlock)
+                        }
+                        .accessibilityIdentifier("chat.more")
+                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("닫기") { showsChat = false }
                     }
                 }
+                .sampleChatSafetySheets(target: chatPartner, cancelsShoot: false,
+                                        showsReport: $showsChatReport, showsBlock: $showsChatBlock)
         }
     }
+
+    private var chatPartner: String { ticket?.photographerDisplayName ?? "작가" }
 
     private func tickClock() async {
         while !Task.isCancelled {
