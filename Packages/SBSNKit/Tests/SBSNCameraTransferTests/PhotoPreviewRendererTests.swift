@@ -77,7 +77,8 @@ struct PhotoPreviewRendererTests {
                 kCGImagePropertyExifBodySerialNumber: "5012345",
                 kCGImagePropertyExifCameraOwnerName: "Photographer",
             ],
-            kCGImagePropertyTIFFDictionary: [kCGImagePropertyTIFFModel: "ILCE-7CM2"],
+            kCGImagePropertyTIFFDictionary: [kCGImagePropertyTIFFModel: "ILCE-7CM2", kCGImagePropertyTIFFArtist: "작가 실명"],
+            kCGImagePropertyIPTCDictionary: [kCGImagePropertyIPTCByline: ["작가 실명"]],
         ])
         let output = directory.appending(path: "full.jpg")
 
@@ -85,6 +86,8 @@ struct PhotoPreviewRendererTests {
 
         let info = try deliverable(output)
         #expect(info.width == 2000 && info.height == 3000)
+        #expect(info.properties[kCGImagePropertyIPTCDictionary] == nil)
+        #expect(info.tiff[kCGImagePropertyTIFFArtist] == nil)
         #expect(info.exif[kCGImagePropertyExifDateTimeOriginal] as? String == "2026:10:22 14:00:00")
         #expect(info.tiff[kCGImagePropertyTIFFModel] as? String == "ILCE-7CM2")
         #expect(info.properties[kCGImagePropertyGPSDictionary] == nil)
@@ -156,6 +159,100 @@ struct PhotoPreviewRendererTests {
 
         let info = try deliverable(output)
         #expect(info.width == 2000 && info.height == 1500)
+    }
+
+    /// 6,000만 화소를 "넘는" 원본만 줄인다(안드로이드 `automaticMaxPixelSize`와 같은 경계).
+    @Test func automaticCapAppliesOnlyAboveSixtyMegapixels() {
+        #expect(PhotoPreviewRenderer.automaticMaxPixelSize(width: 10000, height: 6000) == nil)
+        #expect(PhotoPreviewRenderer.automaticMaxPixelSize(width: 10000, height: 6001) == 8192)
+        #expect(PhotoPreviewRenderer.automaticMaxPixelSize(width: 7008, height: 4672) == nil)
+        #expect(PhotoPreviewRenderer.automaticMaxPixelSize(width: 11648, height: 8736) == 8192)
+    }
+
+    /// 안드로이드 비교 입력과 같은 크기(약 69.9MP). 긴 변 8192, 짧은 변은 5460.8을 반올림한 5461이어야 한다.
+    @Test func capsSourcesAboveSixtyMegapixelsToLongSide8192() throws {
+        let source = try makeJPEG(width: 10240, height: 6826, properties: [:])
+        let output = directory.appending(path: "full.jpg")
+
+        try PhotoPreviewRenderer.renderFullResolutionJPEG(from: source, to: output)
+
+        let info = try deliverable(output)
+        #expect(info.width == 8192 && info.height == 5461)
+        #expect(info.exif[kCGImagePropertyExifPixelXDimension] as? Int == 8192)
+        #expect(info.exif[kCGImagePropertyExifPixelYDimension] as? Int == 5461)
+    }
+
+    /// 허용 목록 태그만 남고, 목록 밖(위치, 일련번호, 소유자, 작가·저작권, 사용자 주석, 고유 ID, IPTC)은 모두 빠진다(D013).
+    @Test func fullResolutionKeepsOnlyAllowListedMetadata() throws {
+        let source = try makeJPEG(width: 1200, height: 800, properties: [
+            kCGImagePropertyGPSDictionary: [kCGImagePropertyGPSLatitude: 37.5796, kCGImagePropertyGPSLongitude: 126.977],
+            kCGImagePropertyExifDictionary: [
+                kCGImagePropertyExifDateTimeOriginal: "2026:11:21 10:00:00",
+                kCGImagePropertyExifOffsetTimeOriginal: "+09:00",
+                kCGImagePropertyExifSubsecTimeOriginal: "42",
+                kCGImagePropertyExifExposureTime: 0.004,
+                kCGImagePropertyExifFNumber: 2.8,
+                kCGImagePropertyExifISOSpeedRatings: [400],
+                kCGImagePropertyExifFocalLength: 35.0,
+                kCGImagePropertyExifLensMake: "Sony",
+                kCGImagePropertyExifLensModel: "FE 35mm F1.8",
+                kCGImagePropertyExifBodySerialNumber: "5012345",
+                kCGImagePropertyExifLensSerialNumber: "0001234",
+                kCGImagePropertyExifCameraOwnerName: "Photographer",
+                kCGImagePropertyExifUserComment: "개인 메모",
+                kCGImagePropertyExifImageUniqueID: "0123456789ABCDEF",
+            ],
+            kCGImagePropertyTIFFDictionary: [
+                kCGImagePropertyTIFFMake: "SONY",
+                kCGImagePropertyTIFFModel: "ILCE-7CM2",
+                kCGImagePropertyTIFFSoftware: "ILCE-7CM2 v1.00",
+                kCGImagePropertyTIFFDateTime: "2026:11:21 10:00:00",
+                kCGImagePropertyTIFFArtist: "작가 실명",
+                kCGImagePropertyTIFFCopyright: "(c) 작가",
+            ],
+            kCGImagePropertyIPTCDictionary: [kCGImagePropertyIPTCByline: ["작가 실명"], kCGImagePropertyIPTCCopyrightNotice: "(c) 작가"],
+        ])
+        let output = directory.appending(path: "full.jpg")
+
+        try PhotoPreviewRenderer.renderFullResolutionJPEG(from: source, to: output)
+
+        let info = try deliverable(output)
+        // 남는 값
+        #expect(info.exif[kCGImagePropertyExifDateTimeOriginal] as? String == "2026:11:21 10:00:00")
+        #expect(info.exif[kCGImagePropertyExifOffsetTimeOriginal] as? String == "+09:00")
+        #expect(info.exif[kCGImagePropertyExifSubsecTimeOriginal] as? String == "42")
+        #expect(info.exif[kCGImagePropertyExifISOSpeedRatings] as? [Int] == [400])
+        #expect(info.exif[kCGImagePropertyExifLensModel] as? String == "FE 35mm F1.8")
+        #expect(info.tiff[kCGImagePropertyTIFFMake] as? String == "SONY")
+        #expect(info.tiff[kCGImagePropertyTIFFModel] as? String == "ILCE-7CM2")
+        #expect(info.tiff[kCGImagePropertyTIFFSoftware] as? String == "ILCE-7CM2 v1.00")
+        #expect(info.tiff[kCGImagePropertyTIFFDateTime] as? String == "2026:11:21 10:00:00")
+        // 고정값
+        #expect(info.exif[kCGImagePropertyExifColorSpace] as? Int == 1)
+        #expect(info.exif[kCGImagePropertyExifPixelXDimension] as? Int == 1200)
+        #expect(info.exif[kCGImagePropertyExifPixelYDimension] as? Int == 800)
+        // 빠지는 값
+        #expect(info.properties[kCGImagePropertyGPSDictionary] == nil)
+        #expect(info.properties[kCGImagePropertyIPTCDictionary] == nil)
+        #expect(info.tiff[kCGImagePropertyTIFFArtist] == nil)
+        #expect(info.tiff[kCGImagePropertyTIFFCopyright] == nil)
+        // EXIF·TIFF 키는 허용 목록과 고정값, ImageIO가 스스로 쓰는 버전 키뿐이어야 한다.
+        let allowedExif = Set(PhotoPreviewRenderer.deliverableExifKeys.map { $0 as String }).union([
+            kCGImagePropertyExifColorSpace, kCGImagePropertyExifPixelXDimension, kCGImagePropertyExifPixelYDimension,
+            kCGImagePropertyExifVersion, kCGImagePropertyExifFlashPixVersion,
+        ].map { $0 as String })
+        let extraExif = Set(info.exif.keys.map { $0 as String }).subtracting(allowedExif)
+        #expect(extraExif.isEmpty, "허용 목록 밖 EXIF: \(extraExif.sorted())")
+        let allowedTIFF = Set(PhotoPreviewRenderer.deliverableTIFFKeys.map { $0 as String })
+            .union([kCGImagePropertyTIFFOrientation, kCGImagePropertyTIFFXResolution, kCGImagePropertyTIFFYResolution,
+                    kCGImagePropertyTIFFResolutionUnit].map { $0 as String })
+        let extraTIFF = Set(info.tiff.keys.map { $0 as String }).subtracting(allowedTIFF)
+        #expect(extraTIFF.isEmpty, "허용 목록 밖 TIFF: \(extraTIFF.sorted())")
+    }
+
+    /// 안드로이드 허용 목록과 개수가 같은지(TIFF 4 + EXIF 26 = 30)
+    @Test func allowListMatchesAndroidCount() {
+        #expect(PhotoPreviewRenderer.deliverableTIFFKeys.count + PhotoPreviewRenderer.deliverableExifKeys.count == 30)
     }
 
     @Test func rejectsFilesThatAreNotImages() throws {
