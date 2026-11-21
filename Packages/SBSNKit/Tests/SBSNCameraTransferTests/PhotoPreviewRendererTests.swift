@@ -67,8 +67,8 @@ struct PhotoPreviewRendererTests {
         #expect(difference.rightHalf > 0.02)
     }
 
-    @Test func fullResolutionJPEGBakesRotationKeepsShotDetailsAndDropsPrivateData() throws {
-        // 세로로 찍은 사진(EXIF 6)은 회전을 픽셀에 반영해 어느 뷰어에서나 세로로 보이게 한다.
+    @Test func fullResolutionJPEGBakesRotationAndKeepsAllMetadata() throws {
+        // 세로로 찍은 사진(EXIF 6)은 회전을 픽셀에 반영해 어느 뷰어에서나 세로로 보이게 한다. 메타데이터는 전부 남는다(D037).
         let source = try makeJPEG(width: 3000, height: 2000, properties: [
             kCGImagePropertyOrientation: 6,
             kCGImagePropertyGPSDictionary: [kCGImagePropertyGPSLatitude: 37.5796, kCGImagePropertyGPSLongitude: 126.977],
@@ -86,17 +86,19 @@ struct PhotoPreviewRendererTests {
 
         let info = try deliverable(output)
         #expect(info.width == 2000 && info.height == 3000)
-        #expect(info.properties[kCGImagePropertyIPTCDictionary] == nil)
-        #expect(info.tiff[kCGImagePropertyTIFFArtist] == nil)
         #expect(info.exif[kCGImagePropertyExifDateTimeOriginal] as? String == "2026:10:22 14:00:00")
         #expect(info.tiff[kCGImagePropertyTIFFModel] as? String == "ILCE-7CM2")
-        #expect(info.properties[kCGImagePropertyGPSDictionary] == nil)
-        #expect(info.exif[kCGImagePropertyExifBodySerialNumber] == nil)
-        #expect(info.exif[kCGImagePropertyExifCameraOwnerName] == nil)
+        #expect(info.tiff[kCGImagePropertyTIFFArtist] as? String == "작가 실명")
+        #expect(info.properties[kCGImagePropertyGPSDictionary] != nil)
+        #expect(info.properties[kCGImagePropertyIPTCDictionary] != nil)
+        #expect(info.exif[kCGImagePropertyExifBodySerialNumber] as? String == "5012345")
+        #expect(info.exif[kCGImagePropertyExifCameraOwnerName] as? String == "Photographer")
+        #expect(info.exif[kCGImagePropertyExifPixelXDimension] as? Int == 2000)
+        #expect(info.exif[kCGImagePropertyExifPixelYDimension] as? Int == 3000)
     }
 
-    /// 가장 흔한 입력(가로 sRGB JPEG)은 그리지 않고 다시 인코딩만 하는 경로를 탄다. 이 경로에서도 개인정보는 빠져야 한다.
-    @Test func plainSRGBJPEGKeepsOriginalResolutionAndDropsPrivateData() throws {
+    /// 가장 흔한 입력(가로 sRGB JPEG)은 그리지 않고 다시 인코딩만 하는 경로를 탄다. 이 경로에서도 메타데이터는 전부 남는다.
+    @Test func plainSRGBJPEGKeepsOriginalResolutionAndAllMetadata() throws {
         let source = try makeJPEG(width: 3000, height: 2000, properties: [
             kCGImagePropertyGPSDictionary: [kCGImagePropertyGPSLatitude: 37.5796, kCGImagePropertyGPSLongitude: 126.977],
             kCGImagePropertyExifDictionary: [
@@ -112,9 +114,9 @@ struct PhotoPreviewRendererTests {
         let info = try deliverable(output)
         #expect(info.width == 3000 && info.height == 2000)
         #expect(info.exif[kCGImagePropertyExifDateTimeOriginal] as? String == "2026:10:22 14:00:00")
-        #expect(info.properties[kCGImagePropertyGPSDictionary] == nil)
-        #expect(info.exif[kCGImagePropertyExifBodySerialNumber] == nil)
-        #expect(info.exif[kCGImagePropertyExifLensSerialNumber] == nil)
+        #expect(info.properties[kCGImagePropertyGPSDictionary] != nil)
+        #expect(info.exif[kCGImagePropertyExifBodySerialNumber] as? String == "5012345")
+        #expect(info.exif[kCGImagePropertyExifLensSerialNumber] as? String == "0001234")
     }
 
     /// 카메라를 Adobe RGB로 두면 색 관리 안 하는 뷰어(메신저 등)에서 색이 바래 보이므로 sRGB 픽셀로 바꾼다.
@@ -139,16 +141,30 @@ struct PhotoPreviewRendererTests {
         #expect(info.width == 1600 && info.height == 1200)
     }
 
-    /// 작가에게 카메라를 JPEG로 바꾸라고 알릴 HEIF 입력을 알아본다. 소니·캐논·니콘·후지는 확장자가 .HIF다.
-    @Test func detectsHEIFInputButNotJPEG() throws {
+    /// 입력 검사: 형식과 회전을 반영한 크기, 촬영 시각을 디코드 없이 읽는다(D040 ③).
+    @Test func inspectionReadsFormatOrientedSizeAndCaptureTime() throws {
+        let portrait = try makeJPEG(width: 6000, height: 4000, properties: [
+            kCGImagePropertyOrientation: 6,
+            kCGImagePropertyExifDictionary: [
+                kCGImagePropertyExifDateTimeOriginal: "2026:11:21 14:05:00",
+                kCGImagePropertyExifOffsetTimeOriginal: "+09:00",
+            ],
+        ])
         let heic = try makeImage(width: 640, height: 480, type: .heic, bitsPerComponent: 16,
                                  colorSpace: CGColorSpace(name: CGColorSpace.displayP3)!)
-        let hif = heic.deletingPathExtension().appendingPathExtension("HIF")
-        try FileManager.default.moveItem(at: heic, to: hif)
-        let jpeg = try makeJPEG(width: 640, height: 480, properties: [:])
+        let png = try makeImage(width: 640, height: 480, type: .png, bitsPerComponent: 8, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!)
+        let text = directory.appending(path: "not-image.jpg")
+        try Data("not an image".utf8).write(to: text)
 
-        #expect(PhotoPreviewRenderer.isHEIF(try #require(CGImageSourceCreateWithURL(hif as CFURL, nil))))
-        #expect(!PhotoPreviewRenderer.isHEIF(try #require(CGImageSourceCreateWithURL(jpeg as CFURL, nil))))
+        let info = try #require(PhotoInspection.of(portrait))
+        #expect(info.format == .jpeg)
+        #expect(info.width == 4000 && info.height == 6000 && info.longSide == 6000)
+        #expect(info.capturedAt == ISO8601DateFormatter().date(from: "2026-11-21T14:05:00+09:00"))
+        #expect(PhotoInspection.of(heic)?.format == .heif)
+        #expect(PhotoInspection.of(png)?.format == .other(UTType.png.identifier))
+        #expect(PhotoInspection.of(text) == nil)
+        #expect(PhotoInspection.format(of: UTType.rawImage.identifier) == .raw)
+        #expect(PhotoInspection.format(of: "com.sony.arw-raw-image") == .raw)
     }
 
     @Test func capsLongSideWhenAsked() throws {
@@ -182,77 +198,129 @@ struct PhotoPreviewRendererTests {
         #expect(info.exif[kCGImagePropertyExifPixelYDimension] as? Int == 5461)
     }
 
-    /// 허용 목록 태그만 남고, 목록 밖(위치, 일련번호, 소유자, 작가·저작권, 사용자 주석, 고유 ID, IPTC)은 모두 빠진다(D013).
-    @Test func fullResolutionKeepsOnlyAllowListedMetadata() throws {
-        let source = try makeJPEG(width: 1200, height: 800, properties: [
-            kCGImagePropertyGPSDictionary: [kCGImagePropertyGPSLatitude: 37.5796, kCGImagePropertyGPSLongitude: 126.977],
-            kCGImagePropertyExifDictionary: [
-                kCGImagePropertyExifDateTimeOriginal: "2026:11:21 10:00:00",
-                kCGImagePropertyExifOffsetTimeOriginal: "+09:00",
-                kCGImagePropertyExifSubsecTimeOriginal: "42",
-                kCGImagePropertyExifExposureTime: 0.004,
-                kCGImagePropertyExifFNumber: 2.8,
-                kCGImagePropertyExifISOSpeedRatings: [400],
-                kCGImagePropertyExifFocalLength: 35.0,
-                kCGImagePropertyExifLensMake: "Sony",
-                kCGImagePropertyExifLensModel: "FE 35mm F1.8",
-                kCGImagePropertyExifBodySerialNumber: "5012345",
-                kCGImagePropertyExifLensSerialNumber: "0001234",
-                kCGImagePropertyExifCameraOwnerName: "Photographer",
-                kCGImagePropertyExifUserComment: "개인 메모",
-                kCGImagePropertyExifImageUniqueID: "0123456789ABCDEF",
-            ],
-            kCGImagePropertyTIFFDictionary: [
-                kCGImagePropertyTIFFMake: "SONY",
-                kCGImagePropertyTIFFModel: "ILCE-7CM2",
-                kCGImagePropertyTIFFSoftware: "ILCE-7CM2 v1.00",
-                kCGImagePropertyTIFFDateTime: "2026:11:21 10:00:00",
-                kCGImagePropertyTIFFArtist: "작가 실명",
-                kCGImagePropertyTIFFCopyright: "(c) 작가",
-            ],
-            kCGImagePropertyIPTCDictionary: [kCGImagePropertyIPTCByline: ["작가 실명"], kCGImagePropertyIPTCCopyrightNotice: "(c) 작가"],
-        ])
+    /// 원본 메타데이터 세그먼트(Exif·XMP·확장 XMP·APP13·COM)가 바이트 그대로 옮겨진다. MakerNote도 같다(D037).
+    /// 원본의 다른 APP 세그먼트와 EOI 뒤 트레일러는 옮기지 않는다.
+    @Test func fullResolutionKeepsEveryMetadataSegmentByteForByte() throws {
+        let forged = try ForgedCameraJPEG(directory: directory, width: 1200, height: 800, orientation: 1)
+        let output = directory.appending(path: "full.jpg")
+
+        try PhotoPreviewRenderer.renderFullResolutionJPEG(from: forged.url, to: output)
+
+        let info = try deliverable(output)
+        #expect(info.width == 1200 && info.height == 800)
+        let segments = try JPEGMetadataTransplant.split([UInt8](try Data(contentsOf: output))).segments
+        let exif = try #require(segments.first { $0.marker == 0xE1 && $0.payload.starts(with: JPEGMetadataTransplant.exifHeader) })
+        #expect(exif.payload == forged.exifPayload, "가로·원본 크기면 Exif 블록이 한 바이트도 바뀌지 않는다")
+        #expect(try ForgedCameraJPEG.makerNote(in: exif.payload) == ForgedCameraJPEG.makerNote)
+        let xmp = try #require(segments.first { $0.marker == 0xE1 && $0.payload.starts(with: JPEGMetadataTransplant.xmpHeader) })
+        let xmpText = String(decoding: xmp.payload, as: UTF8.self)
+        #expect(xmpText.contains("crs:Exposure2012=\"+0.50\"") && xmpText.contains("sbsnTest:Note=\"custom\""))
+        #expect(segments.contains { $0.marker == 0xE1 && $0.payload == forged.extendedXMPPayload })
+        #expect(segments.contains { $0.marker == 0xED && $0.payload == forged.iptcPayload })
+        #expect(segments.contains { $0.marker == 0xFE && $0.payload == forged.commentPayload })
+        #expect(!segments.contains { $0.marker == 0xE3 }, "알 수 없는 APP 세그먼트는 옮기지 않는다")
+        let bytes = try Data(contentsOf: output)
+        #expect(bytes.suffix(2) == Data([0xFF, 0xD9]), "EOI 뒤 트레일러는 옮기지 않는다")
+        #expect(info.properties[kCGImagePropertyGPSDictionary] != nil)
+        #expect(info.exif[kCGImagePropertyExifBodySerialNumber] as? String == "5123456")
+        #expect(info.exif[kCGImagePropertyExifLensSerialNumber] as? String == "0012345")
+        #expect(info.exif[kCGImagePropertyExifCameraOwnerName] as? String == "Owner Name")
+        #expect(info.tiff[kCGImagePropertyTIFFArtist] as? String == "Test Photographer")
+    }
+
+    /// 세로 원본: 회전을 픽셀에 반영하고 Exif·XMP의 회전·크기만 고친다. 원본 방향 썸네일(IFD1)은 연결을 끊는다.
+    /// 출력에 없는 데이터를 가리키는 XMP 항목(hdrgm·MotionPhoto·Container)은 지운다. MakerNote는 그대로다.
+    @Test func rotatedSourceFixesOnlyOrientationAndSize() throws {
+        let forged = try ForgedCameraJPEG(directory: directory, width: 1200, height: 800, orientation: 6)
+        let output = directory.appending(path: "full.jpg")
+
+        try PhotoPreviewRenderer.renderFullResolutionJPEG(from: forged.url, to: output)
+
+        let info = try deliverable(output)
+        #expect(info.width == 800 && info.height == 1200)
+        #expect(info.exif[kCGImagePropertyExifPixelXDimension] as? Int == 800)
+        #expect(info.exif[kCGImagePropertyExifPixelYDimension] as? Int == 1200)
+        let segments = try JPEGMetadataTransplant.split([UInt8](try Data(contentsOf: output))).segments
+        let exif = try #require(segments.first { $0.marker == 0xE1 && $0.payload.starts(with: JPEGMetadataTransplant.exifHeader) })
+        #expect(exif.payload.count == forged.exifPayload.count, "TIFF 블록 길이는 그대로다")
+        #expect(try ForgedCameraJPEG.makerNote(in: exif.payload) == ForgedCameraJPEG.makerNote)
+        let tiff = try JPEGMetadataTransplant.TIFFBlock(payload: exif.payload, base: JPEGMetadataTransplant.exifHeader.count)
+        let ifd0 = try tiff.ifd(at: tiff.firstIFDOffset)
+        #expect(try tiff.uint32(at: ifd0.nextIFDPointer) == 0, "썸네일 IFD1 연결이 끊긴다")
+        let xmp = try #require(segments.first { $0.marker == 0xE1 && $0.payload.starts(with: JPEGMetadataTransplant.xmpHeader) })
+        let xmpText = String(decoding: xmp.payload, as: UTF8.self)
+        #expect(xmpText.contains("tiff:Orientation=\"1\""))
+        #expect(xmpText.contains("exif:PixelXDimension=\"800\"") && xmpText.contains("exif:PixelYDimension=\"1200\""))
+        #expect(!xmpText.contains("hdrgm:Version") && !xmpText.contains("GCamera:MotionPhoto") && !xmpText.contains("<Container:Directory"))
+        #expect(xmpText.contains("crs:Exposure2012"), "다른 XMP 항목은 그대로다")
+    }
+
+    /// Adobe RGB 원본: 픽셀은 sRGB로 바꾸고, 색 공간 표시(Exif ColorSpace, Interop R03, XMP ICCProfile)도 출력에 맞춘다.
+    @Test func adobeRGBMarkersFollowSRGBOutput() throws {
+        let forged = try ForgedCameraJPEG(directory: directory, width: 1200, height: 800, orientation: 1, adobeRGB: true)
+        let output = directory.appending(path: "full.jpg")
+
+        try PhotoPreviewRenderer.renderFullResolutionJPEG(from: forged.url, to: output)
+
+        let info = try deliverable(output)
+        #expect(info.exif[kCGImagePropertyExifColorSpace] as? Int == 1)
+        let segments = try JPEGMetadataTransplant.split([UInt8](try Data(contentsOf: output))).segments
+        let exif = try #require(segments.first { $0.marker == 0xE1 && $0.payload.starts(with: JPEGMetadataTransplant.exifHeader) })
+        #expect(exif.payload.count == forged.exifPayload.count)
+        #expect(String(decoding: exif.payload, as: UTF8.self).contains("R98"))
+        #expect(!String(decoding: exif.payload, as: UTF8.self).contains("R03"))
+        let xmp = try #require(segments.first { $0.marker == 0xE1 && $0.payload.starts(with: JPEGMetadataTransplant.xmpHeader) })
+        #expect(String(decoding: xmp.payload, as: UTF8.self).contains("photoshop:ICCProfile=\"sRGB IEC61966-2.1\""))
+    }
+
+    /// 카메라 XMP 끝의 공백 채움(a7C II는 약 54KB)에서 지울 항목 찾기가 느려지지 않는다(되짚기 폭증 회귀 방지).
+    @Test func xmpPatchStaysFastWithLargeWhitespacePadding() {
+        let xmp = #"<x:xmpmeta><rdf:RDF><rdf:Description tiff:Orientation="6" hdrgm:Version="1.0"/></rdf:RDF></x:xmpmeta>"#
+            + String(repeating: " ", count: 60_000) + "<?xpacket end=\"w\"?>"
+        let payload = JPEGMetadataTransplant.xmpHeader + Array(xmp.utf8)
+        let started = Date()
+
+        let patched = JPEGMetadataTransplant.patchedXMP(payload, output: .init(width: 4672, height: 7008, dropsThumbnail: true))
+
+        #expect(Date().timeIntervalSince(started) < 1)
+        let text = String(decoding: patched, as: UTF8.self)
+        #expect(text.contains("tiff:Orientation=\"1\"") && !text.contains("hdrgm:Version"))
+    }
+
+    /// 원본에 없는 태그는 새로 넣지 않는다(공통 명세): 크기·색 공간 칸이 없는 원본은 출력에도 없다.
+    @Test func absentTagsAreNotAdded() throws {
+        let forged = try ForgedCameraJPEG(directory: directory, width: 1200, height: 800, orientation: 6, includesSizeAndColorSpace: false)
+        let output = directory.appending(path: "full.jpg")
+
+        try PhotoPreviewRenderer.renderFullResolutionJPEG(from: forged.url, to: output)
+
+        let segments = try JPEGMetadataTransplant.split([UInt8](try Data(contentsOf: output))).segments
+        let exif = try #require(segments.first { $0.marker == 0xE1 && $0.payload.starts(with: JPEGMetadataTransplant.exifHeader) })
+        let tiff = try JPEGMetadataTransplant.TIFFBlock(payload: exif.payload, base: JPEGMetadataTransplant.exifHeader.count)
+        let ifd0 = try tiff.ifd(at: tiff.firstIFDOffset)
+        let exifIFD = try tiff.ifd(at: tiff.uint32(at: try #require(ifd0.entries[0x8769]).valueOffset))
+        #expect(exifIFD.entries[0xA002] == nil && exifIFD.entries[0xA003] == nil && exifIFD.entries[0xA001] == nil)
+        #expect(try tiff.uint16(at: try #require(ifd0.entries[0x0112]).valueOffset) == 1)
+    }
+
+    /// HEIF 원본은 ImageIO 메타데이터 트리로 옮긴다. 위치·일련번호·기종은 남고 회전은 1이 된다(MakerNote는 빠질 수 있다).
+    @Test func heifSourceKeepsMetadataThroughMetadataTree() throws {
+        let source = try makeImage(width: 1600, height: 1200, type: .heic, bitsPerComponent: 8, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                   properties: [
+                                       kCGImagePropertyOrientation: 6,
+                                       kCGImagePropertyGPSDictionary: [kCGImagePropertyGPSLatitude: 37.5796, kCGImagePropertyGPSLongitude: 126.977],
+                                       kCGImagePropertyExifDictionary: [kCGImagePropertyExifBodySerialNumber: "5012345"],
+                                       kCGImagePropertyTIFFDictionary: [kCGImagePropertyTIFFModel: "ILCE-7CM2"],
+                                   ])
         let output = directory.appending(path: "full.jpg")
 
         try PhotoPreviewRenderer.renderFullResolutionJPEG(from: source, to: output)
 
         let info = try deliverable(output)
-        // 남는 값
-        #expect(info.exif[kCGImagePropertyExifDateTimeOriginal] as? String == "2026:11:21 10:00:00")
-        #expect(info.exif[kCGImagePropertyExifOffsetTimeOriginal] as? String == "+09:00")
-        #expect(info.exif[kCGImagePropertyExifSubsecTimeOriginal] as? String == "42")
-        #expect(info.exif[kCGImagePropertyExifISOSpeedRatings] as? [Int] == [400])
-        #expect(info.exif[kCGImagePropertyExifLensModel] as? String == "FE 35mm F1.8")
-        #expect(info.tiff[kCGImagePropertyTIFFMake] as? String == "SONY")
+        #expect(info.width == 1200 && info.height == 1600)
+        #expect(info.properties[kCGImagePropertyGPSDictionary] != nil)
+        #expect(info.exif[kCGImagePropertyExifBodySerialNumber] as? String == "5012345")
         #expect(info.tiff[kCGImagePropertyTIFFModel] as? String == "ILCE-7CM2")
-        #expect(info.tiff[kCGImagePropertyTIFFSoftware] as? String == "ILCE-7CM2 v1.00")
-        #expect(info.tiff[kCGImagePropertyTIFFDateTime] as? String == "2026:11:21 10:00:00")
-        // 고정값
-        #expect(info.exif[kCGImagePropertyExifColorSpace] as? Int == 1)
-        #expect(info.exif[kCGImagePropertyExifPixelXDimension] as? Int == 1200)
-        #expect(info.exif[kCGImagePropertyExifPixelYDimension] as? Int == 800)
-        // 빠지는 값
-        #expect(info.properties[kCGImagePropertyGPSDictionary] == nil)
-        #expect(info.properties[kCGImagePropertyIPTCDictionary] == nil)
-        #expect(info.tiff[kCGImagePropertyTIFFArtist] == nil)
-        #expect(info.tiff[kCGImagePropertyTIFFCopyright] == nil)
-        // EXIF·TIFF 키는 허용 목록과 고정값, ImageIO가 스스로 쓰는 버전 키뿐이어야 한다.
-        let allowedExif = Set(PhotoPreviewRenderer.deliverableExifKeys.map { $0 as String }).union([
-            kCGImagePropertyExifColorSpace, kCGImagePropertyExifPixelXDimension, kCGImagePropertyExifPixelYDimension,
-            kCGImagePropertyExifVersion, kCGImagePropertyExifFlashPixVersion,
-        ].map { $0 as String })
-        let extraExif = Set(info.exif.keys.map { $0 as String }).subtracting(allowedExif)
-        #expect(extraExif.isEmpty, "허용 목록 밖 EXIF: \(extraExif.sorted())")
-        let allowedTIFF = Set(PhotoPreviewRenderer.deliverableTIFFKeys.map { $0 as String })
-            .union([kCGImagePropertyTIFFOrientation, kCGImagePropertyTIFFXResolution, kCGImagePropertyTIFFYResolution,
-                    kCGImagePropertyTIFFResolutionUnit].map { $0 as String })
-        let extraTIFF = Set(info.tiff.keys.map { $0 as String }).subtracting(allowedTIFF)
-        #expect(extraTIFF.isEmpty, "허용 목록 밖 TIFF: \(extraTIFF.sorted())")
-    }
-
-    /// 안드로이드 허용 목록과 개수가 같은지(TIFF 4 + EXIF 26 = 30)
-    @Test func allowListMatchesAndroidCount() {
-        #expect(PhotoPreviewRenderer.deliverableTIFFKeys.count + PhotoPreviewRenderer.deliverableExifKeys.count == 30)
     }
 
     @Test func rejectsFilesThatAreNotImages() throws {

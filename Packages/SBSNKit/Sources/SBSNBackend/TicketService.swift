@@ -81,6 +81,8 @@ public enum TicketService {
                     "photographerUid": photographerUid,
                     "photographerDisplayName": presence.displayName,
                     "createdAt": FieldValue.serverTimestamp(),
+                    // 선별 전달(D038). 생성 때 한 번 정하고 바꿀 수 없다. 전환 뒤 규칙은 이 값이 없는 티켓을 거부한다.
+                    "deliveryMode": TicketRecord.curatedDeliveryMode,
                 ], forDocument: refs.ticket)
                 transaction.updateData(["activeTicketId": ticketId], forDocument: refs.presence)
                 transaction.setData(["activeTicketId": ticketId], forDocument: refs.customer)
@@ -113,8 +115,8 @@ public enum TicketService {
         try? await ticketDocument(ticketId).updateData(["photographerAckAt": FieldValue.serverTimestamp()])
     }
 
-    /// 작가: 촬영 종료. 같은 배치로 자기 잠금을 풀고 "촬영 가능"도 끈다.
-    /// 종료 뒤에도 고객에게 넘길 사진을 올리는 동안은 새 매칭을 받지 않고, 다 끝나면 작가가 다시 켠다.
+    /// 작가: 촬영 종료. 같은 배치로 자기 잠금을 풀고 "촬영 가능"도 끈다(선별 티켓은 종료와 잠금 해제가 한 쓰기여야 한다).
+    /// 공개 전에도 다음 매칭을 받을 수 있다(D040). 다음 촬영은 작가가 직접 "촬영 가능"을 켠다.
     public static func end(ticketId: String, photographerUid: String) async throws {
         let batch = db.batch()
         batch.updateData(["endedAt": FieldValue.serverTimestamp()], forDocument: ticketDocument(ticketId))
@@ -127,8 +129,23 @@ public enum TicketService {
     }
 
     /// 고객: 촬영 중 작가가 사라졌을 때의 종료. 작가 시작 뒤 유예 시간이 지나야 규칙이 허용한다.
-    public static func endAsCustomer(ticketId: String) async throws {
-        try await ticketDocument(ticketId).updateData(["endedAt": FieldValue.serverTimestamp()])
+    /// 선별 티켓은 같은 배치로 작가 잠금도 풀어야 한다(규칙이 종료와 잠금 해제를 함께 본다).
+    public static func endAsCustomer(ticket: TicketRecord) async throws {
+        let batch = db.batch()
+        batch.updateData(["endedAt": FieldValue.serverTimestamp()], forDocument: ticketDocument(ticket.id))
+        batch.updateData(["activeTicketId": NSNull()], forDocument: PhotographerDirectory.collection.document(ticket.photographerUid))
+        try await batch.commit()
+    }
+
+    /// 고객의 끝난 선별 촬영들(최근 종료 순). 내 사진 탭이 기기를 바꾸거나 다시 설치한 뒤에도 지난 촬영을 찾는 데 쓴다.
+    public static func customerGalleryTickets(uid: String, limit: Int = 30) async throws -> [TicketRecord] {
+        let snapshot = try await db.collection("tickets")
+            .whereField("customerUid", isEqualTo: uid)
+            .whereField("deliveryMode", isEqualTo: TicketRecord.curatedDeliveryMode)
+            .order(by: "endedAt", descending: true)
+            .limit(to: limit)
+            .getDocuments()
+        return snapshot.documents.compactMap { FirestoreCodec.ticket(id: $0.documentID, data: $0.data()) }
     }
 
     /// 둘 다 시작하기 전의 취소. 트랜잭션으로 자기 쪽 잠금을 함께 푼다(고객은 작가 잠금도 푼다).

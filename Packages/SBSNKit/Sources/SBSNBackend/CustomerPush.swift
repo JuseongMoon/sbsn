@@ -5,16 +5,29 @@ import Foundation
 /// 고객 기기의 원격 알림.
 ///
 /// 서버 함수(백엔드 저장소(웹 프로젝트)의 `firebase/functions`)가 `customerDevices/{uid}`의 FCM 토큰으로 작가 메시지, 작가의 시작·취소, 촬영 종료,
-/// 나중에 올라온 구매 사진을 알린다. 고객 자신이 한 일은 알리지 않는다. 앱을 깨우지는 않고 배너만 온다.
+/// 갤러리 공개를 알린다. 고객 자신이 한 일은 알리지 않는다. 앱을 깨우지는 않고 배너만 온다.
 public enum CustomerPush {
     /// 원격 알림의 종류. 키는 서버 함수의 `data.type`과 맞춘다.
     public enum Notification: Sendable, Equatable {
         /// 작가가 채팅을 보냈다.
         case message(ticketID: String)
-        /// 작가가 시작·취소했거나 촬영이 끝났다. 화면은 티켓 리스너가 이미 바꾸므로 앱이 앞에 있으면 배너를 띄우지 않는다.
-        case ticket(ticketID: String)
-        /// 산 사진의 고화질본이 올라왔다. 앱을 열면 사진 앱에 저장된다.
-        case photoReady(ticketID: String, fileName: String)
+        /// 작가가 시작·취소했거나 촬영이 끝났거나 갤러리를 공개했다(`change: "galleryPublished"`).
+        /// 화면은 티켓 리스너가 이미 바꾸므로 앱이 앞에 있으면 배너를 띄우지 않는다. 같은 `eventID`는 한 번만 처리한다.
+        case ticket(ticketID: String, change: String?, eventID: String?)
+
+        public static let galleryPublishedChange = "galleryPublished"
+
+        public var ticketID: String {
+            switch self {
+            case .message(let ticketID), .ticket(let ticketID, _, _): ticketID
+            }
+        }
+
+        /// 갤러리 공개 알림이면 true. 누르면 그 갤러리로 간다.
+        public var isGalleryPublished: Bool {
+            if case .ticket(_, let change, _) = self { return change == Self.galleryPublishedChange }
+            return false
+        }
     }
 
     /// 원격 알림 내용을 분류한다. 모르는 종류면 nil.
@@ -22,8 +35,7 @@ public enum CustomerPush {
         guard let ticketID = userInfo["ticketId"] as? String else { return nil }
         switch userInfo["type"] as? String {
         case "message": return .message(ticketID: ticketID)
-        case "ticket": return .ticket(ticketID: ticketID)
-        case "photo": return (userInfo["fileName"] as? String).map { .photoReady(ticketID: ticketID, fileName: $0) }
+        case "ticket": return .ticket(ticketID: ticketID, change: userInfo["change"] as? String, eventID: userInfo["eventId"] as? String)
         default: return nil
         }
     }

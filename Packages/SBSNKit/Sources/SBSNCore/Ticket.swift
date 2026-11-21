@@ -24,13 +24,23 @@ public struct TicketRecord: Sendable, Equatable, Identifiable {
     public var endedAt: Date?
     public var cancelledAt: Date?
     public var cancelledBy: String?
+    /// 전달 방식. 선별 흐름은 `curatedV1`(고객이 확정할 때 한 번 정하고 바꿀 수 없다, D038).
+    public let deliveryMode: String?
+    /// 작가가 갤러리를 공개한 시각(서버 함수 `publishGallery`가 한 번만 쓴다). 구매 기한의 기준이다.
+    public var galleryPublishedAt: Date?
+    /// 공개한 사진 ID(5~8개, 작가가 정한 순서). 공개 뒤 바뀌지 않는다.
+    public var galleryPhotoIds: [String]
+
+    /// 선별 전달 방식 값(D038)
+    public static let curatedDeliveryMode = "curatedV1"
 
     /// 촬영 중에 작가가 사라졌을 때 고객이 스스로 종료할 수 있을 때까지의 시간
     public static let customerEndGracePeriod: TimeInterval = 60 * 60
 
     public init(id: String, customerUid: String, photographerUid: String, photographerDisplayName: String, createdAt: Date,
                 customerStartedAt: Date? = nil, photographerStartedAt: Date? = nil, photographerAckAt: Date? = nil,
-                endedAt: Date? = nil, cancelledAt: Date? = nil, cancelledBy: String? = nil) {
+                endedAt: Date? = nil, cancelledAt: Date? = nil, cancelledBy: String? = nil,
+                deliveryMode: String? = TicketRecord.curatedDeliveryMode, galleryPublishedAt: Date? = nil, galleryPhotoIds: [String] = []) {
         self.id = id
         self.customerUid = customerUid
         self.photographerUid = photographerUid
@@ -42,6 +52,23 @@ public struct TicketRecord: Sendable, Equatable, Identifiable {
         self.endedAt = endedAt
         self.cancelledAt = cancelledAt
         self.cancelledBy = cancelledBy
+        self.deliveryMode = deliveryMode
+        self.galleryPublishedAt = galleryPublishedAt
+        self.galleryPhotoIds = galleryPhotoIds
+    }
+
+    /// 이 앱이 이어 갈 수 있는 티켓인지. 전환 전에 만든 실시간 FTP 티켓(필드 없음)은 이어 가지 않는다(D039).
+    public var isCurated: Bool { deliveryMode == Self.curatedDeliveryMode }
+
+    public var isGalleryPublished: Bool { galleryPublishedAt != nil }
+
+    /// 새 구매를 받는 마지막 시각(공개 + 168시간, 서버 규칙이 강제한다). 공개 전이면 nil.
+    public var galleryPurchaseClosesAt: Date? { galleryPublishedAt?.addingTimeInterval(PhotoCuration.purchaseWindow) }
+
+    /// 지금 새 구매를 받는지(공개됨, 취소 아님, 기한 전)
+    public func acceptsGalleryPurchase(at now: Date = Date()) -> Bool {
+        guard cancelledAt == nil, let closesAt = galleryPurchaseClosesAt else { return false }
+        return now < closesAt
     }
 
     public var phase: TicketPhase { TicketPhase.of(self) }

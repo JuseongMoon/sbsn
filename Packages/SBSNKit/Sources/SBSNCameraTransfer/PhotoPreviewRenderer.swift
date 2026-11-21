@@ -12,8 +12,9 @@ import UniformTypeIdentifiers
 /// - 고화질본: 고객에게 넘기는 최종본. 원해상도 JPEG(sRGB 8비트)로 맞춘다. 카메라마다 들어오는 파일이 달라서
 ///   (JPEG·HEIF·RAW, sRGB·Adobe RGB·P3, 8·10비트, HDR, 세로 사진의 회전 정보) 어느 카메라든 같은 모양으로 만든다.
 ///   a7C II 원본(7008×4672, 약 21MB) 기준 약 8.7MB로 LTE 3~4Mbps에서 17~23초다(2026-10-27 측정).
-///   6,000만 화소를 넘는 원본은 긴 변을 8192로 줄인다. 메타데이터는 허용 목록(촬영 시각·노출·렌즈·기종)만 옮긴다.
-///   두 규칙은 안드로이드 작가 앱과 같은 값이다(D013, 안드로이드 `PhotoPreviewRenderer.kt`).
+///   6,000만 화소를 넘는 원본은 긴 변을 8192로 줄인다(D013).
+///   메타데이터는 작가가 올린 파일 것을 전부 유지한다(D037): JPEG는 원본 세그먼트를 바이트로 옮기고(`JPEGMetadataTransplant`),
+///   HEIF는 ImageIO 메타데이터 트리로 옮긴다(MakerNote는 빠질 수 있다). 회전·색 공간·크기만 출력값으로 고친다.
 public enum PhotoPreviewRenderer {
     public static let defaultMaxPixelSize = 1024
     public static let defaultQuality = 0.75
@@ -24,28 +25,6 @@ public enum PhotoPreviewRenderer {
     /// 1억 화소 원본은 디코드만 400MB라 작가 폰 메모리가 모자라고, 원해상도 JPEG가 LTE로 1분 가까이 걸린다.
     public static let largeSourcePixelCount = 60_000_000
     public static let largeSourceMaxPixelSize = 8192
-
-    /// 고객 최종본에 옮기는 EXIF 태그(허용 목록). 나머지(위치, 일련번호, 소유자, 제조사 노트, 작가·저작권 표기, 사용자 주석,
-    /// 고유 ID, IPTC, XMP)는 옮기지 않는다. 안드로이드 `deliverableExifTags` 30개와 같다(TIFF 4개 + EXIF 26개).
-    /// (CFString은 Sendable이 아니라 저장 프로퍼티 대신 계산 프로퍼티로 둔다.)
-    static var deliverableTIFFKeys: [CFString] {
-        [kCGImagePropertyTIFFDateTime, kCGImagePropertyTIFFMake, kCGImagePropertyTIFFModel, kCGImagePropertyTIFFSoftware]
-    }
-    static var deliverableExifKeys: [CFString] { [
-        // 시각
-        kCGImagePropertyExifDateTimeOriginal, kCGImagePropertyExifDateTimeDigitized,
-        kCGImagePropertyExifOffsetTimeOriginal, kCGImagePropertyExifOffsetTimeDigitized, kCGImagePropertyExifOffsetTime,
-        kCGImagePropertyExifSubsecTimeOriginal, kCGImagePropertyExifSubsecTimeDigitized, kCGImagePropertyExifSubsecTime,
-        // 노출(ISOSpeedRatings = 안드로이드 PhotographicSensitivity)
-        kCGImagePropertyExifExposureTime, kCGImagePropertyExifFNumber, kCGImagePropertyExifISOSpeedRatings,
-        kCGImagePropertyExifSensitivityType, kCGImagePropertyExifExposureProgram, kCGImagePropertyExifExposureMode,
-        kCGImagePropertyExifExposureBiasValue, kCGImagePropertyExifShutterSpeedValue, kCGImagePropertyExifApertureValue,
-        kCGImagePropertyExifMeteringMode, kCGImagePropertyExifFlash, kCGImagePropertyExifWhiteBalance,
-        kCGImagePropertyExifLightSource,
-        // 렌즈·초점
-        kCGImagePropertyExifFocalLength, kCGImagePropertyExifFocalLenIn35mmFilm,
-        kCGImagePropertyExifLensMake, kCGImagePropertyExifLensModel, kCGImagePropertyExifLensSpecification,
-    ] }
 
     /// 입력 크기에 따른 고화질본 긴 변 상한. 6,000만 화소 이하면 nil(원해상도).
     public static func automaticMaxPixelSize(width: Int, height: Int) -> Int? {
@@ -93,8 +72,8 @@ public enum PhotoPreviewRenderer {
     /// 고객에게 넘기는 원해상도 JPEG.
     ///
     /// 이미 sRGB 8비트 JPEG이고 회전 정보가 없고 줄일 필요가 없으면 그대로 다시 인코딩만 한다(가장 흔한 경우, 빠르고 메모리를 덜 쓴다).
-    /// 그 밖에는(세로 사진, Adobe RGB·P3, HEIF, 10비트·HDR, RAW, 6,000만 화소 초과) 픽셀을 sRGB 8비트로 그려 회전을 반영하고,
-    /// HDR은 SDR로 톤 매핑한다(iOS 18 이상). 메타데이터는 허용 목록만 옮긴다.
+    /// 그 밖에는(세로 사진, Adobe RGB·P3, HEIF, 10비트·HDR, 6,000만 화소 초과) 픽셀을 sRGB 8비트로 그려 회전을 반영하고,
+    /// HDR은 SDR로 톤 매핑한다(iOS 18 이상). 메타데이터는 전부 옮기고 회전·색 공간·크기만 고친다(D037).
     /// - Parameter maxPixelSize: 긴 변 상한. nil이면 `automaticMaxPixelSize`(6,000만 화소 초과면 8192, 아니면 원해상도).
     public static func renderFullResolutionJPEG(from source: URL, to destination: URL, quality: Double = defaultFullResolutionQuality,
                                                 maxPixelSize: Int? = nil) throws {
@@ -102,14 +81,10 @@ public enum PhotoPreviewRenderer {
               let sourceProperties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any]
         else { throw RenderError.unreadableImage }
         try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-        guard let output = CGImageDestinationCreateWithURL(destination as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else {
-            throw RenderError.encodingFailed
-        }
         let sourceWidth = sourceProperties[kCGImagePropertyPixelWidth] as? Int ?? 0
         let sourceHeight = sourceProperties[kCGImagePropertyPixelHeight] as? Int ?? 0
+        let orientation = sourceProperties[kCGImagePropertyOrientation] as? Int ?? 1
         let cap = maxPixelSize ?? automaticMaxPixelSize(width: sourceWidth, height: sourceHeight)
-        // AddImageFromSource는 넘긴 값을 원본 메타데이터 위에 덮어쓸 뿐이라 GPS·일련번호가 남는다.
-        // 그래서 빠른 경로도 이미지만 꺼내 AddImage로 쓴다(넘긴 메타데이터만 기록, 시간·크기는 같음).
         let image: CGImage
         if cap == nil, isPlainSRGBJPEG(imageSource, properties: sourceProperties) {
             guard let decoded = CGImageSourceCreateImageAtIndex(imageSource, 0, nil),
@@ -119,20 +94,66 @@ public enum PhotoPreviewRenderer {
         } else {
             image = try renderSRGB(from: source, imageSource: imageSource, maxPixelSize: cap)
         }
-        var properties = deliverableMetadata(from: sourceProperties, width: image.width, height: image.height)
-        properties[kCGImageDestinationLossyCompressionQuality] = quality
-        CGImageDestinationAddImage(output, image, properties as CFDictionary)
-        guard CGImageDestinationFinalize(output) else {
+        let rotates = (5...8).contains(orientation)
+        let resized = image.width != (rotates ? sourceHeight : sourceWidth) || image.height != (rotates ? sourceWidth : sourceHeight)
+
+        // JPEG 입력: 메타데이터 없이 인코딩하고 원본 세그먼트를 옮긴다. 원본 구조를 읽지 못하면 아래 메타데이터 트리 방식으로 간다.
+        if CGImageSourceGetType(imageSource) as String? == UTType.jpeg.identifier,
+           let original = try? Data(contentsOf: source, options: .mappedIfSafe) {
+            let encoded = try encodeJPEG(image, quality: quality)
+            let output = JPEGMetadataTransplant.Output(width: image.width, height: image.height,
+                                                       dropsThumbnail: orientation != 1 || resized)
+            if let transplanted = try? JPEGMetadataTransplant.transplant(from: original, into: encoded, output: output) {
+                try transplanted.write(to: destination, options: .atomic)
+                return
+            }
+        }
+        guard let destinationImage = CGImageDestinationCreateWithURL(destination as CFURL, UTType.jpeg.identifier as CFString, 1, nil)
+        else { throw RenderError.encodingFailed }
+        let metadata = fixedMetadata(of: imageSource, width: image.width, height: image.height)
+        CGImageDestinationAddImageAndMetadata(destinationImage, image, metadata,
+                                              [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
+        guard CGImageDestinationFinalize(destinationImage) else {
             throw RenderError.encodingFailed
         }
     }
 
-    /// 카메라가 HEIF로 찍어 보냈는지. 작가 카메라 입력은 JPEG만 지원한다(2026-10-27 결정).
-    /// 카메라 HEIF는 대부분 10비트라 일부 안드로이드 기기가 열지 못하고(Galaxy A34 실측), iOS 17은 HDR HEIF를 톤 매핑하지 못한다.
-    /// iOS 작가 앱은 HEIF도 처리하지만 작가에게 카메라를 JPEG로 바꾸라고 알린다. ImageIO는 HEIC를 HEIF의 하위 형식으로 보지 않아 둘 다 확인한다.
-    public static func isHEIF(_ imageSource: CGImageSource) -> Bool {
-        guard let identifier = CGImageSourceGetType(imageSource) as String?, let type = UTType(identifier) else { return false }
-        return type.conforms(to: .heif) || type.conforms(to: .heic)
+    /// 메타데이터 없이 JPEG로 인코딩한다(인코더가 넣는 Exif·IPTC는 이식 때 원본 것으로 바뀐다).
+    static func encodeJPEG(_ image: CGImage, quality: Double) throws -> Data {
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data as CFMutableData, UTType.jpeg.identifier as CFString, 1, nil)
+        else { throw RenderError.encodingFailed }
+        CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { throw RenderError.encodingFailed }
+        return data as Data
+    }
+
+    /// JPEG가 아닌 입력(HEIF)의 메타데이터 트리. EXIF·GPS·일련번호·XMP는 남고 MakerNote는 빠질 수 있다(공통 명세상 허용).
+    /// 회전·크기·색 공간은 원본에 그 항목이 있을 때만 출력값으로 고친다. 출력에 없는 데이터를 가리키는 XMP 항목은 지운다.
+    static func fixedMetadata(of imageSource: CGImageSource, width: Int, height: Int) -> CGImageMetadata? {
+        guard let original = CGImageSourceCopyMetadataAtIndex(imageSource, 0, nil),
+              let metadata = CGImageMetadataCreateMutableCopy(original)
+        else { return nil }
+        let fixes: [(CFString, CFString, CFTypeRef)] = [
+            (kCGImagePropertyTIFFDictionary, kCGImagePropertyTIFFOrientation, 1 as CFNumber),
+            (kCGImagePropertyExifDictionary, kCGImagePropertyExifPixelXDimension, width as CFNumber),
+            (kCGImagePropertyExifDictionary, kCGImagePropertyExifPixelYDimension, height as CFNumber),
+            (kCGImagePropertyExifDictionary, kCGImagePropertyExifColorSpace, 1 as CFNumber),
+        ]
+        for (dictionary, key, value) in fixes where CGImageMetadataCopyTagMatchingImageProperty(metadata, dictionary, key) != nil {
+            CGImageMetadataSetValueMatchingImageProperty(metadata, dictionary, key, value)
+        }
+        if CGImageMetadataCopyTagWithPath(metadata, nil, "photoshop:ICCProfile" as CFString) != nil {
+            CGImageMetadataSetValueWithPath(metadata, nil, "photoshop:ICCProfile" as CFString, "sRGB IEC61966-2.1" as CFString)
+        }
+        for tag in (CGImageMetadataCopyTags(metadata) as? [CGImageMetadataTag]) ?? [] {
+            guard let prefix = CGImageMetadataTagCopyPrefix(tag) as String?, let name = CGImageMetadataTagCopyName(tag) as String?
+            else { continue }
+            if prefix == "hdrgm" || (prefix == "GCamera" && name.hasPrefix("MotionPhoto")) || (prefix == "Container" && name == "Directory") {
+                CGImageMetadataRemoveTagWithPath(metadata, nil, "\(prefix):\(name)" as CFString)
+            }
+        }
+        return metadata
     }
 
     /// 원본에서 꺼낸 이미지는 ImageIO가 원본 메타데이터와 이어 두어, 원본에 IPTC가 있으면 넘긴 값만 써도
@@ -183,30 +204,6 @@ public enum PhotoPreviewRenderer {
                 .createCGImage(image, from: extent, format: .RGBA8, colorSpace: srgb)
         else { throw RenderError.encodingFailed }
         return rendered
-    }
-
-    /// 고객에게 넘길 메타데이터. 허용 목록 태그만 옮기고, 회전은 픽셀에 반영했으므로 Orientation 1, 색 공간 sRGB(1),
-    /// 픽셀 크기는 출력 크기로 쓴다(안드로이드와 같은 고정값). GPS·IPTC·XMP 사전은 만들지 않는다.
-    static func deliverableMetadata(from source: [CFString: Any], width: Int, height: Int) -> [CFString: Any] {
-        let sourceExif = source[kCGImagePropertyExifDictionary] as? [CFString: Any] ?? [:]
-        let sourceTIFF = source[kCGImagePropertyTIFFDictionary] as? [CFString: Any] ?? [:]
-        var exif: [CFString: Any] = [:]
-        for key in deliverableExifKeys {
-            exif[key] = sourceExif[key]
-        }
-        exif[kCGImagePropertyExifColorSpace] = 1
-        exif[kCGImagePropertyExifPixelXDimension] = width
-        exif[kCGImagePropertyExifPixelYDimension] = height
-        var tiff: [CFString: Any] = [:]
-        for key in deliverableTIFFKeys {
-            tiff[key] = sourceTIFF[key]
-        }
-        tiff[kCGImagePropertyTIFFOrientation] = 1
-        return [
-            kCGImagePropertyExifDictionary: exif,
-            kCGImagePropertyTIFFDictionary: tiff,
-            kCGImagePropertyOrientation: 1,
-        ]
     }
 
     /// 사진 전체에 비스듬히 반복되는 반투명 글자. 모서리 로고보다 잘라 내거나 지우기 어렵다.

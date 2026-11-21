@@ -5,12 +5,15 @@ import Foundation
 /// 작가 기기의 원격 알림.
 ///
 /// 서버 함수(백엔드 저장소(웹 프로젝트)의 `firebase/functions`)가 `photographers/{uid}`의 FCM 토큰으로 매칭·채팅·구매 알림을 보낸다.
-/// 매칭과 구매 알림에는 content-available이 함께 들어 있어, 백그라운드에 있던 작가 앱이 잠깐 깨어나 일을 할 수 있다.
+/// 매칭 알림에는 content-available이 함께 들어 있어, 백그라운드에 있던 작가 앱이 잠깐 깨어나 "받음"을 남긴다.
+/// 구매 알림은 판매 소식이다. 고화질본은 공개 전에 이미 올라가 있어 올릴 것이 없다(D038).
 public enum PhotographerPush {
-    /// 원격 알림에 담긴 구매
+    /// 공개한 갤러리에서 고객이 산 사진
     public struct Purchase: Sendable, Equatable {
         public let ticketID: String
-        public let fileName: String
+        public let photoID: String
+        /// 같은 구매를 두 번 처리하지 않도록 서버가 정한 값
+        public let eventID: String?
     }
 
     /// 원격 알림의 종류. 키는 서버 함수의 `data.type`과 맞춘다.
@@ -19,7 +22,7 @@ public enum PhotographerPush {
         case match(ticketID: String)
         /// 고객이 채팅을 보냈다. 배너만 온다.
         case message(ticketID: String)
-        /// 고객이 사진을 샀다. 깨어난 앱은 고화질본을 올린다.
+        /// 고객이 공개한 사진을 샀다(`curatedPhotoPurchased`). 배너를 누르면 그 사진으로 간다.
         case purchase(Purchase)
 
         public var ticketID: String {
@@ -36,7 +39,9 @@ public enum PhotographerPush {
         switch userInfo["type"] as? String {
         case "match": return .match(ticketID: ticketID)
         case "message": return .message(ticketID: ticketID)
-        case "purchase": return purchase(from: userInfo).map(Notification.purchase)
+        case "curatedPhotoPurchased":
+            guard let photoID = userInfo["photoId"] as? String else { return nil }
+            return .purchase(Purchase(ticketID: ticketID, photoID: photoID, eventID: userInfo["eventId"] as? String))
         default: return nil
         }
     }
@@ -45,14 +50,5 @@ public enum PhotographerPush {
     @MainActor
     public static func register(apnsToken: Data) async throws {
         try await PushToken.register(apnsToken: apnsToken, in: "photographers")
-    }
-
-    /// 원격 알림 내용이 구매 알림이면 구매 정보를 꺼낸다. 키는 서버 함수의 `purchaseMessage`와 맞춘다.
-    public static func purchase(from userInfo: [AnyHashable: Any]) -> Purchase? {
-        guard userInfo["type"] as? String == "purchase",
-              let ticketID = userInfo["ticketId"] as? String,
-              let fileName = userInfo["fileName"] as? String
-        else { return nil }
-        return Purchase(ticketID: ticketID, fileName: fileName)
     }
 }

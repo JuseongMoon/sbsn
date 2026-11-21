@@ -5,28 +5,36 @@ import Testing
 struct PhotoRecordTests {
     let now = Date(timeIntervalSince1970: 2_000_000)
 
-    @Test func cannotPurchaseWithoutPreviewOrTwice() {
-        #expect(PhotoRecord(fileName: "A.JPG").canPurchase(in: .shooting) == false)
-        let previewed = PhotoRecord(fileName: "A.JPG", previewUploadedAt: now)
-        #expect(previewed.canPurchase(in: .shooting))
-        #expect(previewed.canPurchase(in: .matched))
-        var purchased = previewed
-        purchased.purchasedAt = now
-        #expect(purchased.canPurchase(in: .shooting) == false)
+    private func publishedTicket(at time: Date, ids: [String] = ["pa"]) -> TicketRecord {
+        TicketRecord(id: "T1", customerUid: "C", photographerUid: "P", photographerDisplayName: "작가", createdAt: time,
+                     endedAt: time, galleryPublishedAt: time, galleryPhotoIds: ids)
     }
 
-    @Test func afterEndingOnlyPhotosWithFullResolutionCanBePurchased() {
-        // 촬영이 끝난 뒤에는 작가 앱이 더 올리지 않을 수 있으므로 준비된 사진만 산다.
-        let previewed = PhotoRecord(fileName: "A.JPG", previewUploadedAt: now)
-        #expect(previewed.canPurchase(in: .ended) == false)
-        var ready = previewed
-        ready.fullresUploadedAt = now
-        #expect(ready.canPurchase(in: .ended))
-        #expect(ready.canPurchase(in: .cancelled) == false)
+    @Test func purchaseNeedsPublishedSelectionWithBothFiles() {
+        let ticket = publishedTicket(at: now)
+        let ready = PhotoRecord(id: "pa", previewUploadedAt: now, fullresUploadedAt: now)
+        #expect(ready.canPurchase(on: ticket, at: now))
+        #expect(PhotoRecord(id: "pa", previewUploadedAt: now).canPurchase(on: ticket, at: now) == false)
+        #expect(PhotoRecord(id: "pb", previewUploadedAt: now, fullresUploadedAt: now).canPurchase(on: ticket, at: now) == false,
+                "공개 목록에 없는 사진은 살 수 없다")
+        var unpublished = ticket
+        unpublished.galleryPublishedAt = nil
+        #expect(ready.canPurchase(on: unpublished, at: now) == false)
+        var purchased = ready
+        purchased.purchasedAt = now
+        #expect(purchased.canPurchase(on: ticket, at: now) == false)
+    }
+
+    @Test func purchaseClosesExactly168HoursAfterPublishing() {
+        let ticket = publishedTicket(at: now)
+        let ready = PhotoRecord(id: "pa", previewUploadedAt: now, fullresUploadedAt: now)
+        #expect(ready.canPurchase(on: ticket, at: now.addingTimeInterval(168 * 3600 - 1)))
+        #expect(ready.canPurchase(on: ticket, at: now.addingTimeInterval(168 * 3600)) == false)
+        #expect(ticket.galleryPurchaseClosesAt == now.addingTimeInterval(168 * 3600))
     }
 
     @Test func downloadAndDeliveryFollowPurchaseAndFullResolution() {
-        var photo = PhotoRecord(fileName: "A.JPG", previewUploadedAt: now, purchasedAt: now)
+        var photo = PhotoRecord(id: "pa", previewUploadedAt: now, purchasedAt: now)
         #expect(photo.isReadyToDownload == false)
         #expect(photo.canMarkDelivered == false)
         photo.fullresUploadedAt = now
@@ -34,6 +42,14 @@ struct PhotoRecordTests {
         #expect(photo.canMarkDelivered)
         photo.deliveredAt = now
         #expect(photo.canMarkDelivered == false)
+    }
+
+    /// 이름이 없으면 촬영 시각, 그것도 없으면 "사진 n"(안드로이드 선택기는 이름을 주지 않는다).
+    @Test func displayNameFallsBackToCaptureTimeThenIndex() {
+        #expect(PhotoRecord(id: "pa", fileName: "DSC00012.JPG").displayName(index: 0) == "DSC00012.JPG")
+        let timed = PhotoRecord(id: "pa", capturedAt: now)
+        #expect(timed.displayName(index: 0) == now.formatted(.dateTime.hour().minute().second()))
+        #expect(PhotoRecord(id: "pa", fileName: "").displayName(index: 2) == "사진 3")
     }
 
     @Test func chatTextIsTrimmedAndBounded() {

@@ -36,19 +36,21 @@ enum FirestoreCodec {
             photographerAckAt: date(data["photographerAckAt"]),
             endedAt: date(data["endedAt"]),
             cancelledAt: date(data["cancelledAt"]),
-            cancelledBy: data["cancelledBy"] as? String
+            cancelledBy: data["cancelledBy"] as? String,
+            deliveryMode: data["deliveryMode"] as? String,
+            galleryPublishedAt: date(data["galleryPublishedAt"]),
+            galleryPhotoIds: data["galleryPhotoIds"] as? [String] ?? []
         )
     }
 
     static func photo(id: String, data: [String: Any]) -> PhotoRecord {
         PhotoRecord(
-            fileName: id,
+            id: id,
+            fileName: data["fileName"] as? String,
             previewPath: data["previewPath"] as? String,
             previewUploadedAt: date(data["previewUploadedAt"]),
             fullresPath: data["fullresPath"] as? String,
             fullresUploadedAt: date(data["fullresUploadedAt"]),
-            originalPath: data["originalPath"] as? String,
-            originalUploadedAt: date(data["originalUploadedAt"]),
             capturedAt: date(data["capturedAt"]),
             favoritedAt: date(data["favoritedAt"]),
             purchasedAt: date(data["purchasedAt"]),
