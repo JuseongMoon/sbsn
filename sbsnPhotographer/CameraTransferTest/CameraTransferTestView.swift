@@ -5,16 +5,29 @@
 //  Created by 문주성 on 10/17/26.
 //
 
+import SBSNUI
 import SwiftUI
 
 /// 촬영 중 화면: 카메라 FTP 설정값, 받은 사진과 업로드 상태. 측정 항목(전송 방식·처리량·로그)은 `showsMeasurements`일 때만 보인다.
+/// 촬영 탭의 티켓 화면에서는 `showsPlannedFeatures`로 아직 만들지 않은 메뉴(타이머·연결 가이드·검수) 자리를 함께 보여 준다.
 /// 모델은 `PhotographerSession`이 소유한다. 이 화면을 닫아도 수신과 업로드는 계속된다.
 struct CameraTransferTestView: View {
     @Bindable var model: CameraTransferTestModel
     var showsMeasurements = false
+    var showsPlannedFeatures = false
 
     var body: some View {
         List {
+            if showsPlannedFeatures {
+                Section {
+                    NavigationLink {
+                        PlannedFeaturePage(PhotographerFeatures.timer)
+                    } label: {
+                        LabeledContent("남은 시간", value: "--:--")
+                    }
+                    .accessibilityIdentifier("planned.timer")
+                }
+            }
             Section {
                 LabeledContent("상태", value: model.isRunning ? "수신 대기 중" : "중지됨")
                 if model.isRunning {
@@ -41,6 +54,9 @@ struct CameraTransferTestView: View {
                     model.enterShootingMode()
                 }
                 .disabled(!model.isRunning)
+                if showsPlannedFeatures {
+                    PlannedFeatureLink(PhotographerFeatures.photoReview)
+                }
             }
 
             Section {
@@ -54,6 +70,9 @@ struct CameraTransferTestView: View {
                 LabeledContent("포트", value: String(CameraTransferTestModel.port))
                 LabeledContent("사용자", value: CameraTransferTestModel.user)
                 LabeledContent("비밀번호", value: CameraTransferTestModel.password)
+                if showsPlannedFeatures {
+                    PlannedFeatureLink(PhotographerFeatures.cameraGuide)
+                }
             } header: {
                 Text("카메라 FTP 서버 설정값")
             } footer: {

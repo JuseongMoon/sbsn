@@ -4,6 +4,8 @@ import SwiftUI
 import UIKit
 
 /// 매칭 뒤 촬영이 시작되기 전까지의 화면: 서로의 위치 지도, 작가 확인 상태, 채팅.
+///
+/// `sharing`이 받은 위치를 보여 주기만 한다. 위치를 올리고 받는 루프는 `TicketBackgroundWork`가 맡는다.
 struct TicketMeetupView: View {
     let ticket: TicketRecord
     let myUid: String
@@ -46,8 +48,7 @@ struct TicketMeetupView: View {
             Divider()
             TicketChatView(ticketId: ticket.id, myUid: myUid, otherLabel: ticket.photographerDisplayName)
         }
-        .task(id: ticket.id) { await sharing.listenToOthers() }
-        .task(id: ticket.id) { await sharing.shareMyLocation() }
+        // 위치 주고받기는 화면이 아니라 뿌리 화면의 `TicketBackgroundWork`가 돌린다(다른 탭에 있어도 이어지게).
     }
 
     private var statusLines: some View {

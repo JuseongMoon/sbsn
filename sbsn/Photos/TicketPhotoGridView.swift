@@ -1,5 +1,6 @@
 import SBSNBackend
 import SBSNCore
+import SBSNUI
 import SwiftUI
 
 /// 촬영 중·촬영 뒤의 사진 그리드. 미리보기는 화면에 보이는 셀부터 받고, 셀을 누르면 상세 화면으로 간다.
@@ -16,6 +17,7 @@ struct TicketPhotoGridView: View {
         ScrollView {
             VStack(spacing: 8) {
                 header
+                plannedTools
                 if photos.isEmpty {
                     ContentUnavailableView(
                         "아직 사진이 없습니다",
@@ -37,8 +39,27 @@ struct TicketPhotoGridView: View {
         .navigationDestination(for: String.self) { fileName in
             PhotoDetailView(ticket: ticket, fileName: fileName, photos: photos, workspace: workspace)
         }
+        .navigationDestination(for: PlannedFeature.self) { PlannedFeaturePage($0) }
+        // 목록 리스너는 여러 번 불러도 하나만 붙는다. 누락 사진 확인은 `TicketBackgroundWork`가 탭과 무관하게 돌린다.
         .task { workspace.delivery.startListening() }
-        .task { await workspace.delivery.watchForMissingDocuments() }
+    }
+
+    /// 아직 만들지 않은 정렬·바구니(빈 페이지)
+    private var plannedTools: some View {
+        HStack {
+            NavigationLink(value: CustomerFeatures.recommendation) {
+                Label(CustomerFeatures.recommendation.title, systemImage: CustomerFeatures.recommendation.systemImage)
+            }
+            .accessibilityIdentifier("planned.recommendation")
+            NavigationLink(value: CustomerFeatures.basket) {
+                Label(CustomerFeatures.basket.title, systemImage: CustomerFeatures.basket.systemImage)
+            }
+            .accessibilityIdentifier("planned.basket")
+            Spacer()
+        }
+        .buttonStyle(.bordered)
+        .font(.footnote)
+        .padding(.horizontal)
     }
 
     private var header: some View {

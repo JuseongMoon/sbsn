@@ -25,8 +25,7 @@ final class CycleDriverUITests: XCTestCase {
 
     /// 이름을 넣고 "촬영 가능"을 켠 뒤 위치가 공유되면 홈으로 나간다(앱은 백그라운드 위치로 살아 있어야 한다).
     func test_P1_photographerGoesAvailable() throws {
-        let app = photographerApp
-        app.activate()
+        let app = activatePhotographer()
         let toggle = app.switches["photographer.available"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 20), "촬영 가능 토글이 없음")
         if (toggle.value as? String) != "1" {
@@ -48,8 +47,7 @@ final class CycleDriverUITests: XCTestCase {
 
     /// 매칭된 티켓 화면을 열고(알림 대신 앱을 직접 앞으로) 고객 메시지를 확인한 뒤 시작을 누른다.
     func test_P2_photographerStarts() throws {
-        let app = photographerApp
-        app.activate()
+        let app = activatePhotographer()
         let start = app.buttons["photographer.start"]
         XCTAssertTrue(start.waitForExistence(timeout: 30), "티켓 화면의 시작 버튼이 없음")
         XCTAssertTrue(app.staticTexts[message].waitForExistence(timeout: 20), "고객 메시지가 보이지 않음")
@@ -64,8 +62,7 @@ final class CycleDriverUITests: XCTestCase {
 
     /// 촬영 화면에서 받은 장수를 확인한다.
     func test_P3_photographerShowsReceived() throws {
-        let app = photographerApp
-        app.activate()
+        let app = activatePhotographer()
         XCTAssertTrue(app.buttons["photographer.end"].waitForExistence(timeout: 20))
         printAddresses(app)
         attachScreenshot("P3 수신", app: app)
@@ -80,8 +77,7 @@ final class CycleDriverUITests: XCTestCase {
     }
 
     func test_P5_photographerEnds() throws {
-        let app = photographerApp
-        app.activate()
+        let app = activatePhotographer()
         let end = app.buttons["photographer.end"]
         XCTAssertTrue(end.waitForExistence(timeout: 20))
         end.tap()
@@ -119,8 +115,7 @@ final class CycleDriverUITests: XCTestCase {
 
     /// 촬영 화면의 카메라 연결 표시가 바뀌는 대로 출력한다. 맥에서 FTP로 틀린 비밀번호·느린 전송·정상 전송을 보내는 동안 띄워 둔다.
     func test_P7_photographerWatchesCameraLink() throws {
-        let app = photographerApp
-        app.activate()
+        let app = activatePhotographer()
         let link = app.descendants(matching: .any)["camera.link"]
         XCTAssertTrue(link.waitForExistence(timeout: 20), "카메라 연결 표시가 없음")
         let seconds = TimeInterval(ProcessInfo.processInfo.environment["SBSN_WATCH_SECONDS"] ?? "") ?? 60
@@ -144,10 +139,12 @@ final class CycleDriverUITests: XCTestCase {
     /// 앱을 다시 켠 뒤 한 번 더 돌리면 값이 유지되는지 알 수 있다.
     func test_P8_photographerSetsConcurrency() throws {
         let target = Int(ProcessInfo.processInfo.environment["SBSN_CONCURRENCY"] ?? "") ?? 2
-        let app = photographerApp
-        app.activate()
+        let app = activatePhotographer()
+        let more = app.buttons["photographer.more"]
+        XCTAssertTrue(more.waitForExistence(timeout: 20), "\"…\" 메뉴가 없음")
+        more.tap()
         let toggle = app.descendants(matching: .any)["photographer.measurements"]
-        XCTAssertTrue(toggle.waitForExistence(timeout: 20), "측정 버튼이 없음")
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5), "측정 항목이 없음")
         toggle.tap()
         let stepper = app.steppers.matching(NSPredicate(format: "label BEGINSWITH '큰 파일 동시 업로드'")).firstMatch
         for _ in 0..<6 where !stepper.exists {
@@ -166,8 +163,7 @@ final class CycleDriverUITests: XCTestCase {
 
     /// 작가 앱을 앱 전환기에서 쓸어 올려 종료한다(사용자 강제 종료). 이 뒤에는 iOS가 알림으로 앱을 깨우지 않는다.
     func test_P9_photographerForceQuits() throws {
-        let app = photographerApp
-        app.activate()
+        let app = activatePhotographer()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
         // 화면 아래 가장자리에서 천천히 끌어 올려 멈추면 앱 전환기가 열린다.
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.998))
@@ -188,8 +184,7 @@ final class CycleDriverUITests: XCTestCase {
 
     /// 작가가 채팅을 보낸다(고객 알림 확인용). 촬영 중이면 채팅 시트를 먼저 연다.
     func test_P11_photographerSendsMessage() throws {
-        let app = photographerApp
-        app.activate()
+        let app = activatePhotographer()
         let field = app.descendants(matching: .any)["chat.field"]
         if !field.waitForExistence(timeout: 5) {
             app.buttons["채팅"].tap()
@@ -204,8 +199,7 @@ final class CycleDriverUITests: XCTestCase {
 
     /// 작가가 시작 전에 촬영을 취소한다(고객 알림 확인용).
     func test_P12_photographerCancels() throws {
-        let app = photographerApp
-        app.activate()
+        let app = activatePhotographer()
         let cancel = app.buttons["취소"]
         XCTAssertTrue(cancel.waitForExistence(timeout: 20), "취소 버튼이 없음")
         cancel.tap()
@@ -215,17 +209,74 @@ final class CycleDriverUITests: XCTestCase {
         print("SBSN 작가 취소 \(Date().ISO8601Format(.iso8601.time(includingFractionalSeconds: true)))")
     }
 
+    /// 지금 화면(만나기·촬영)의 "…" 메뉴를 열어 캡처하고, 다른 탭에 다녀와 화면이 이어지는지 본다.
+    /// 만나기 화면이면 `SBSN_MESSAGE`가 다시 보이는지(채팅 리스너가 다시 붙는지) 확인한다.
+    func test_P13_photographerMenusAndTabs() throws {
+        let app = activatePhotographer()
+        attachScreenshot("P13 지금 화면", app: app)
+        let more = app.buttons["photographer.more"]
+        XCTAssertTrue(more.waitForExistence(timeout: 20), "\"…\" 메뉴가 없음")
+        more.tap()
+        attachScreenshot("P13 … 메뉴", app: app)
+        dismissMenu(app)
+        let isMeeting = app.buttons["photographer.start"].exists
+        app.tabBars.buttons["내역"].tap()
+        RunLoop.current.run(until: Date().addingTimeInterval(5))
+        attachScreenshot("P13 내역 탭", app: app)
+        app.tabBars.buttons["촬영"].tap()
+        if isMeeting {
+            XCTAssertTrue(app.staticTexts[message].waitForExistence(timeout: 15), "탭 복귀 뒤 채팅이 다시 보이지 않음")
+        } else {
+            XCTAssertTrue(app.buttons["photographer.end"].waitForExistence(timeout: 15) || app.descendants(matching: .any)["camera.link"].exists,
+                          "탭 복귀 뒤 촬영 화면이 아님")
+        }
+        attachScreenshot("P13 탭 복귀", app: app)
+    }
+
     // MARK: - 고객
+
+    /// 지금 화면을 캡처하고(만나기면 "…" 메뉴도) 다른 탭(`SBSN_STAY_TAB`, 기본 마이)에 `SBSN_STAY_SECONDS`초(기본 200) 머문 뒤
+    /// 촬영 탭으로 돌아온다. 그동안 맥에서 Firestore의 고객 위치 갱신 시각·티켓 상태를 본다(탭을 옮겨도 끊기지 않는지).
+    func test_C17_customerStaysOnOtherTab() throws {
+        let environment = ProcessInfo.processInfo.environment
+        let tab = environment["SBSN_STAY_TAB"] ?? "마이"
+        let seconds = TimeInterval(environment["SBSN_STAY_SECONDS"] ?? "") ?? 200
+        let app = activateCustomer()
+        attachScreenshot("C17 촬영 화면", app: app)
+        let more = app.buttons["customer.meetup.more"]
+        if more.waitForExistence(timeout: 3) {
+            more.tap()
+            attachScreenshot("C17 만나기 … 메뉴", app: app)
+            dismissMenu(app)
+        }
+        app.tabBars.buttons[tab].tap()
+        print("SBSN 다른 탭(\(tab))으로 감 \(Date().ISO8601Format(.iso8601.time(includingFractionalSeconds: true)))")
+        attachScreenshot("C17 \(tab) 탭", app: app)
+        RunLoop.current.run(until: Date().addingTimeInterval(seconds))
+        app.tabBars.buttons["촬영"].tap()
+        print("SBSN 촬영 탭으로 돌아옴 \(Date().ISO8601Format(.iso8601.time(includingFractionalSeconds: true)))")
+        attachScreenshot("C17 촬영 탭 복귀", app: app)
+    }
+
+    /// 사진을 산 뒤 곧바로 다른 탭(마이)으로 가서 `SBSN_STAY_SECONDS`초(기본 60) 머문다. 그동안 사진 앱 저장(`deliveredAt`)이
+    /// 이어지는지 맥에서 보고, 돌아와 상세 화면의 전달 표시를 확인한다.
+    func test_C18_customerPurchasesThenVisitsOtherTab() throws {
+        let seconds = TimeInterval(ProcessInfo.processInfo.environment["SBSN_STAY_SECONDS"] ?? "") ?? 60
+        let app = customerApp
+        let (fileName, purchasedAt) = try purchasePhoto(app)
+        app.tabBars.buttons["마이"].tap()
+        print("SBSN \(fileName) 구매 뒤 마이 탭으로 감 \(Date().ISO8601Format(.iso8601.time(includingFractionalSeconds: true)))")
+        RunLoop.current.run(until: Date().addingTimeInterval(seconds))
+        app.tabBars.buttons["촬영"].tap()
+        waitForDelivery(app: app, fileName: fileName, since: purchasedAt)
+    }
 
     /// 지도에서 작가를 골라 확정하고, 작가 앱이 받았다는 표시를 기다린다.
     func test_C1_customerConfirms() throws {
-        let app = customerApp
-        app.activate()
+        let app = activateCustomer()
         allowSystemAlerts(seconds: 6)
         selectPhotographerOnMap(app)
-        let confirm = app.buttons["customer.confirm"]
-        XCTAssertTrue(confirm.waitForExistence(timeout: 10), "확정 버튼이 없음")
-        confirm.tap()
+        confirmSelectedPhotographer(app)
         let started = Date()
         XCTAssertTrue(app.buttons["customer.start"].waitForExistence(timeout: 30), "티켓 화면으로 넘어가지 않음")
         XCTAssertTrue(app.staticTexts["작가 확인됨"].waitForExistence(timeout: 60), "작가 앱이 받았다는 표시가 없음")
@@ -235,16 +286,14 @@ final class CycleDriverUITests: XCTestCase {
 
     /// 진단: 지도에서 작가를 골라 카드만 띄운다(확정하지 않음). 마커·카드의 시간 표시 언어를 확인할 때 쓴다.
     func test_C9_customerPreviewsPhotographer() throws {
-        let app = customerApp
-        app.activate()
+        let app = activateCustomer()
         selectPhotographerOnMap(app)
-        XCTAssertTrue(app.buttons["customer.confirm"].waitForExistence(timeout: 10), "작가 카드가 없음")
+        XCTAssertTrue(app.buttons["customer.review"].waitForExistence(timeout: 10), "작가 카드가 없음")
         attachScreenshot("C9 작가 카드", app: app)
     }
 
     func test_C2_customerSendsMessage() throws {
-        let app = customerApp
-        app.activate()
+        let app = activateCustomer()
         let field = app.descendants(matching: .any)["chat.field"]
         XCTAssertTrue(field.waitForExistence(timeout: 20))
         field.tap()
@@ -255,18 +304,20 @@ final class CycleDriverUITests: XCTestCase {
     }
 
     func test_C3_customerStarts() throws {
-        let app = customerApp
-        app.activate()
+        let app = activateCustomer()
         let start = app.buttons["customer.start"]
         XCTAssertTrue(start.waitForExistence(timeout: 20))
         start.tap()
+        let proceed = app.buttons["customer.payment.continue"]
+        XCTAssertTrue(proceed.waitForExistence(timeout: 10), "촬영료 결제 자리 화면이 뜨지 않음")
+        attachScreenshot("C3 촬영료 결제 자리", app: app)
+        proceed.tap()
         attachScreenshot("C3 시작", app: app)
     }
 
     /// 둘 다 시작하기 전에 고객이 촬영을 취소한다.
     func test_C8_customerCancels() throws {
-        let app = customerApp
-        app.activate()
+        let app = activateCustomer()
         let cancel = app.buttons["취소"]
         XCTAssertTrue(cancel.waitForExistence(timeout: 20), "취소 버튼이 없음")
         cancel.tap()
@@ -280,8 +331,7 @@ final class CycleDriverUITests: XCTestCase {
 
     /// 사진 목록이 촬영 중 화면으로 바뀌고 미리보기가 몇 장 왔는지 기록한다.
     func test_C4_customerSeesPreviews() throws {
-        let app = customerApp
-        app.activate()
+        let app = activateCustomer()
         let cells = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'photo.cell.'"))
         XCTAssertTrue(waitUntil(timeout: 120) { cells.count > photoIndex }, "미리보기가 \(photoIndex + 1)장 이상 오지 않음")
         print("SBSN 고객 그리드 사진 \(cells.count)장")
@@ -318,6 +368,7 @@ final class CycleDriverUITests: XCTestCase {
     /// `SBSN_PHOTO_INDEX`번째 사진의 상세를 열어 구매를 확인까지 누른다.
     private func purchasePhoto(_ app: XCUIApplication) throws -> (fileName: String, purchasedAt: Date) {
         app.activate()
+        openShootTab(app)
         if app.navigationBars.buttons.element(boundBy: 0).exists, !app.descendants(matching: .any)["photo.cell.\(firstCellName(app) ?? "")"].exists {
             app.navigationBars.buttons.element(boundBy: 0).tap()
         }
@@ -328,6 +379,7 @@ final class CycleDriverUITests: XCTestCase {
         cell.tap()
         let purchase = app.buttons["photo.purchase"]
         XCTAssertTrue(purchase.waitForExistence(timeout: 15), "\(fileName) 구매 버튼이 없음")
+        attachScreenshot("사진 상세", app: app)
         purchase.tap()
         let confirm = try XCTUnwrap(app.buttons.matching(NSPredicate(format: "label == '구매'")).allElementsBoundByIndex.last { $0.isHittable },
                                     "구매 확인 버튼이 없음")
@@ -339,8 +391,7 @@ final class CycleDriverUITests: XCTestCase {
 
     /// 이미 산 사진의 상세를 열어 사진 앱 저장까지 기다린다(권한 창이 뜨면 허용).
     func test_C6_customerChecksDelivery() throws {
-        let app = customerApp
-        app.activate()
+        let app = activateCustomer()
         let cells = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'photo.cell.'"))
         XCTAssertTrue(waitUntil(timeout: 60) { cells.count > photoIndex })
         let cell = cells.element(boundBy: photoIndex)
@@ -363,8 +414,7 @@ final class CycleDriverUITests: XCTestCase {
 
     /// 촬영이 끝난 뒤: 안내가 보이고, 고화질본이 없는 사진(`SBSN_PHOTO_INDEX`)은 구매 버튼이 없어야 한다.
     func test_C7_customerAfterEnd() throws {
-        let app = customerApp
-        app.activate()
+        let app = activateCustomer()
         XCTAssertTrue(app.staticTexts["촬영이 끝났습니다. 준비된 사진만 구매할 수 있습니다"].waitForExistence(timeout: 20), "종료 안내가 없음")
         let cells = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'photo.cell.'"))
         XCTAssertTrue(waitUntil(timeout: 20) { cells.count > photoIndex })
@@ -432,13 +482,10 @@ final class CycleDriverUITests: XCTestCase {
     /// 작가 앱이 응답하지 않는 매칭에서 2분 뒤 "작가 응답 없음" 안내가 뜨는지 본다. 관리자가 넣은 앱 없는 시험 작가를 확정한다.
     /// 처음 티켓 화면에서 알림 권한 창이 뜨면 허용한다.
     func test_C12_customerSeesSilentPhotographer() throws {
-        let app = customerApp
-        app.activate()
+        let app = activateCustomer()
         allowSystemAlerts(seconds: 3)
         selectPhotographerOnMap(app)
-        let confirm = app.buttons["customer.confirm"]
-        XCTAssertTrue(confirm.waitForExistence(timeout: 10), "확정 버튼이 없음")
-        confirm.tap()
+        confirmSelectedPhotographer(app)
         let started = Date()
         XCTAssertTrue(app.buttons["customer.start"].waitForExistence(timeout: 30), "티켓 화면으로 넘어가지 않음")
         allowSystemAlerts(seconds: 5)
@@ -450,12 +497,9 @@ final class CycleDriverUITests: XCTestCase {
 
     /// 지도에서 작가를 골라 확정만 하고 티켓 화면이 뜨면 끝낸다(작가 앱 응답을 기다리지 않는다).
     func test_C14_customerConfirmsOnly() throws {
-        let app = customerApp
-        app.activate()
+        let app = activateCustomer()
         selectPhotographerOnMap(app)
-        let confirm = app.buttons["customer.confirm"]
-        XCTAssertTrue(confirm.waitForExistence(timeout: 10), "확정 버튼이 없음")
-        confirm.tap()
+        confirmSelectedPhotographer(app)
         XCTAssertTrue(app.buttons["customer.start"].waitForExistence(timeout: 30), "티켓 화면으로 넘어가지 않음")
         print("SBSN 확정 \(app.navigationBars.firstMatch.identifier)")
     }
@@ -472,8 +516,7 @@ final class CycleDriverUITests: XCTestCase {
 
     /// 진단: 고객 앱 화면 구조를 출력한다.
     func test_C0_customerDumpsHierarchy() throws {
-        let app = customerApp
-        app.activate()
+        let app = activateCustomer()
         print("SBSN 기기 선호 언어 \(Locale.preferredLanguages), 실행기 언어 \(Locale.current.identifier)")
         RunLoop.current.run(until: Date().addingTimeInterval(12))
         print("SBSN 화면 구조\n" + app.debugDescription)
@@ -481,6 +524,43 @@ final class CycleDriverUITests: XCTestCase {
     }
 
     // MARK: - 도구
+
+    /// 앱을 앞으로 가져와 "촬영" 탭을 연다. 다른 탭에 두고 나갔어도 단계가 같은 화면에서 시작하게 한다.
+    private func activateCustomer() -> XCUIApplication {
+        customerApp.activate()
+        openShootTab(customerApp)
+        return customerApp
+    }
+
+    private func activatePhotographer() -> XCUIApplication {
+        photographerApp.activate()
+        openShootTab(photographerApp)
+        return photographerApp
+    }
+
+    /// 열린 메뉴를 닫는다(화면 위쪽 빈 곳을 누름).
+    private func dismissMenu(_ app: XCUIApplication) {
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.06)).tap()
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+    }
+
+    private func openShootTab(_ app: XCUIApplication) {
+        let tab = app.tabBars.buttons["촬영"]
+        if tab.waitForExistence(timeout: 5), !tab.isSelected {
+            tab.tap()
+        }
+    }
+
+    /// 작가 카드의 "이 작가와 촬영하기"로 가격·조건 확인 자리 화면을 열고, 그 화면의 확정 버튼을 누른다.
+    private func confirmSelectedPhotographer(_ app: XCUIApplication) {
+        let review = app.buttons["customer.review"]
+        XCTAssertTrue(review.waitForExistence(timeout: 10), "\"이 작가와 촬영하기\" 버튼이 없음")
+        review.tap()
+        let confirm = app.buttons["customer.confirm"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 10), "가격·조건 확인 화면의 확정 버튼이 없음")
+        attachScreenshot("가격·조건 확인", app: app)
+        confirm.tap()
+    }
 
     /// 지난 촬영 화면(끝남·취소)에 남아 있으면 지도로 돌아가 작가 마커를 누른다.
     private func selectPhotographerOnMap(_ app: XCUIApplication) {

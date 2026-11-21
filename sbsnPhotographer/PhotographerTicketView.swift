@@ -11,8 +11,10 @@ struct PhotographerTicketView: View {
     @State private var confirmsCancel = false
     @State private var confirmsEnd = false
     @State private var isWorking = false
-    /// 촬영 중에는 홈으로 나갈 수 없어, 현장에서 업로드 설정을 바꿔 비교할 수 있게 측정 항목을 이 화면에서 켠다.
+    /// 촬영 중에는 홈으로 나갈 수 없어, 현장에서 업로드 설정을 바꿔 비교할 수 있게 측정 항목을 이 화면("…" 메뉴)에서 켠다.
     @State private var showsMeasurements = false
+    /// "…" 메뉴에서 연 빈 페이지
+    @State private var openedFeature: PlannedFeature?
 
     var body: some View {
         Group {
@@ -29,6 +31,7 @@ struct PhotographerTicketView: View {
                 ContentUnavailableView("진행 중인 촬영이 없습니다", systemImage: "camera")
             }
         }
+        .navigationDestination(item: $openedFeature) { PlannedFeaturePage($0) }
         .sheet(isPresented: $showsChat) {
             if let ticket = session.ticket, let uid = session.uid {
                 NavigationStack {
@@ -50,14 +53,18 @@ struct PhotographerTicketView: View {
             meeting(ticket)
         case .shooting, .ended:
             if let delivery = session.delivery {
-                CameraTransferTestView(model: delivery, showsMeasurements: showsMeasurements)
+                CameraTransferTestView(model: delivery, showsMeasurements: showsMeasurements, showsPlannedFeatures: true)
                     .safeAreaInset(edge: .bottom) {
                         shootingBar(ticket)
                     }
                     .toolbar {
                         Button("채팅", systemImage: "bubble.left.and.bubble.right") { showsChat = true }
-                        Toggle("측정", systemImage: "gauge.with.dots.needle.33percent", isOn: $showsMeasurements)
-                            .accessibilityIdentifier("photographer.measurements")
+                        Menu("더 보기", systemImage: "ellipsis.circle") {
+                            Toggle("측정", systemImage: "gauge.with.dots.needle.33percent", isOn: $showsMeasurements)
+                                .accessibilityIdentifier("photographer.measurements")
+                            plannedMenuItems
+                        }
+                        .accessibilityIdentifier("photographer.more")
                     }
             } else {
                 ContentUnavailableView("전달이 끝났습니다", systemImage: "checkmark.circle")
@@ -98,10 +105,25 @@ struct PhotographerTicketView: View {
         }
         .navigationTitle("고객 만나기")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            Menu("더 보기", systemImage: "ellipsis.circle") { plannedMenuItems }
+                .accessibilityIdentifier("photographer.more")
+        }
         .confirmationDialog("이 촬영을 취소할까요?", isPresented: $confirmsCancel, titleVisibility: .visible) {
             Button("촬영 취소", role: .destructive) {
                 perform { await session.cancelMatch() }
             }
+        }
+    }
+
+    /// "…" 메뉴의 빈 페이지 항목(만나기·촬영 화면 공통)
+    @ViewBuilder
+    private var plannedMenuItems: some View {
+        Button(PhotographerFeatures.customerBrief.title, systemImage: PhotographerFeatures.customerBrief.systemImage) {
+            openedFeature = PhotographerFeatures.customerBrief
+        }
+        Button(PhotographerFeatures.safety.title, systemImage: PhotographerFeatures.safety.systemImage) {
+            openedFeature = PhotographerFeatures.safety
         }
     }
 

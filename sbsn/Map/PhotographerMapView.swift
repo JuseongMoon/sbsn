@@ -4,8 +4,9 @@ import SBSNCore
 import SBSNUI
 import SwiftUI
 
-/// 촬영 가능한 작가를 지도에서 고르고 확정하는 화면. 활성 티켓이 없을 때만 보인다.
+/// 촬영 가능한 작가를 지도에서 고르고 확정하는 화면("촬영" 탭, 활성 티켓이 없을 때).
 ///
+/// 작가 카드의 "이 작가와 촬영하기"가 가격·조건 확인 자리 화면을 띄우고, 그 화면의 확정 버튼이 확정 트랜잭션을 부른다.
 /// 작가 목록 리스너는 이 화면이 떠 있는 동안만 붙고, 마커는 `Map`의 selection으로 고른다.
 /// 고객이 위치 권한을 거부해도 지도와 작가 마커는 보여야 하므로 카메라는 내 위치를 못 받으면 서울로 둔다.
 struct PhotographerMapView: View {
@@ -25,6 +26,14 @@ struct PhotographerMapView: View {
     @State private var confirmFailure: ConfirmFailure?
     /// 확정이 거부된 작가. 리스너가 갱신되기 전이라도 바로 지도에서 뺀다.
     @State private var rejectedUids: Set<String> = []
+    /// 가격·조건 확인 시트에 띄운 작가. 시트를 연 동안 지도에서 빠져도 그 작가로 확정한다.
+    @State private var reviewingPhotographer: PhotographerPresence?
+    @State private var mode = Mode.map
+
+    enum Mode: Hashable {
+        case map
+        case list
+    }
 
     static let seoul = MapCameraPosition.region(MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780),
@@ -57,24 +66,19 @@ struct PhotographerMapView: View {
 
     var body: some View {
         NavigationStack {
-            Map(position: $position, selection: $selectedUid) {
-                UserAnnotation()
-                ForEach(markers) { marker in
-                    Annotation(marker.presence.displayName, coordinate: marker.coordinate) {
-                        markerView(isSelected: marker.id == selectedUid)
-                            .accessibilityIdentifier("marker.\(marker.presence.displayName)")
-                    }
-                    .tag(marker.id)
+            Group {
+                switch mode {
+                case .map:
+                    map
+                        .safeAreaInset(edge: .bottom) { bottomPanel }
+                case .list:
+                    PlannedFeaturePage(CustomerFeatures.photographerList)
                 }
             }
-            .mapControls {
-                MapUserLocationButton()
-                MapCompass()
-            }
-            .safeAreaInset(edge: .bottom) { bottomPanel }
-            .navigationTitle("십분스냅")
+            .safeAreaInset(edge: .top) { modePicker }
+            .navigationTitle("작가 찾기")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { debugMenu }
+            .toolbar { plannedMenus }
             .task { authorization.requestWhenInUseIfNeeded() }
             .task(id: listenerGeneration) { await listen() }
             .task { await tickClock() }
@@ -92,7 +96,41 @@ struct PhotographerMapView: View {
                     position = .region(region)
                 }
             }
+            .sheet(item: $reviewingPhotographer) { photographer in
+                PriceReviewSheet(photographer: photographer, isConfirming: isConfirming,
+                                 onConfirm: { confirm(photographer) },
+                                 onClose: { reviewingPhotographer = nil })
+            }
         }
+    }
+
+    private var map: some View {
+        Map(position: $position, selection: $selectedUid) {
+            UserAnnotation()
+            ForEach(markers) { marker in
+                Annotation(marker.presence.displayName, coordinate: marker.coordinate) {
+                    markerView(isSelected: marker.id == selectedUid)
+                        .accessibilityIdentifier("marker.\(marker.presence.displayName)")
+                }
+                .tag(marker.id)
+            }
+        }
+        .mapControls {
+            MapUserLocationButton()
+            MapCompass()
+        }
+    }
+
+    private var modePicker: some View {
+        Picker("보기", selection: $mode) {
+            Text("지도").tag(Mode.map)
+            Text("목록").tag(Mode.list)
+        }
+        .pickerStyle(.segmented)
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(.bar)
+        .accessibilityIdentifier("customer.findMode")
     }
 
     /// 좌표들을 모두 담는 영역. 한 명이면 그 주변 2km, 여럿이면 여백을 30% 둔다.
@@ -125,16 +163,6 @@ struct PhotographerMapView: View {
                 Text(warning)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            }
-            if let message = session.debugMessage {
-                HStack {
-                    Text(message)
-                        .font(.caption)
-                        .textSelection(.enabled)
-                    Spacer()
-                    Button("닫기") { session.dismissDebugMessage() }
-                        .font(.caption)
-                }
             }
             if let listenError {
                 HStack {
@@ -188,20 +216,23 @@ struct PhotographerMapView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Button {
-                confirm(photographer)
+            NavigationLink {
+                PlannedFeaturePage(CustomerFeatures.photographerProfile)
             } label: {
-                Group {
-                    if isConfirming {
-                        ProgressView()
-                    } else {
-                        Text("이 작가와 촬영 확정")
-                    }
-                }
-                .frame(maxWidth: .infinity)
+                Text(CustomerFeatures.photographerProfile.title)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("planned.photographerProfile")
+            Button {
+                confirmFailure = nil
+                reviewingPhotographer = photographer
+            } label: {
+                Text("이 작가와 촬영하기")
+                    .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .accessibilityIdentifier("customer.confirm")
+            .accessibilityIdentifier("customer.review")
             .disabled(isConfirming)
         }
     }
@@ -212,20 +243,22 @@ struct PhotographerMapView: View {
         return formatter
     }()
 
-    // MARK: - 디버그
+    // MARK: - 준비 중 메뉴
 
-    private var debugMenu: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
-            Menu {
-                Button("익명 계정 재발급", systemImage: "person.badge.plus") {
-                    Task { await session.reissueAccount() }
-                }
-                Button("활성 티켓 로컬 정리", systemImage: "trash") {
-                    session.clearLocalTicketForDebug()
-                }
+    private var plannedMenus: some ToolbarContent {
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            NavigationLink {
+                PlannedFeaturePage(CustomerFeatures.conditions)
             } label: {
-                Image(systemName: "ladybug")
+                Label(CustomerFeatures.conditions.title, systemImage: CustomerFeatures.conditions.systemImage)
             }
+            .accessibilityIdentifier("planned.conditions")
+            NavigationLink {
+                PlannedFeaturePage(CustomerFeatures.events)
+            } label: {
+                Label(CustomerFeatures.events.title, systemImage: CustomerFeatures.events.systemImage)
+            }
+            .accessibilityIdentifier("planned.events")
         }
     }
 
@@ -250,10 +283,12 @@ struct PhotographerMapView: View {
         }
     }
 
-    /// 확정 트랜잭션. 성공하면 세션이 티켓 화면으로 넘긴다. 거부되면 안내만 남기고 지도에 머문다.
+    /// 확정 트랜잭션(가격·조건 확인 시트의 확정 버튼). 성공하면 세션이 티켓 화면으로 넘긴다.
+    /// 거부되면 시트를 닫고 지도에 안내를 남긴다.
     private func confirm(_ photographer: PhotographerPresence) {
         guard !isConfirming else { return }
         guard session.isOnline else {
+            reviewingPhotographer = nil
             confirmFailure = ConfirmFailure(message: "인터넷 연결을 확인해 주세요.", existingTicketId: nil)
             return
         }
@@ -263,8 +298,10 @@ struct PhotographerMapView: View {
             defer { isConfirming = false }
             do {
                 let ticketId = try await TicketService.confirm(photographer: photographer, customerUid: myUid)
+                reviewingPhotographer = nil
                 session.rememberTicket(ticketId)
             } catch let error as TicketService.ConfirmError {
+                reviewingPhotographer = nil
                 rejectedUids.insert(photographer.uid)
                 selectedUid = nil
                 if case .alreadyMatched(let existing) = error {
@@ -273,6 +310,7 @@ struct PhotographerMapView: View {
                     confirmFailure = ConfirmFailure(message: error.localizedDescription, existingTicketId: nil)
                 }
             } catch {
+                reviewingPhotographer = nil
                 confirmFailure = ConfirmFailure(message: "확정하지 못했습니다: \(error.localizedDescription)", existingTicketId: nil)
             }
         }

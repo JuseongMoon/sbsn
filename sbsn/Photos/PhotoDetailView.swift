@@ -1,6 +1,7 @@
 import Photos
 import SBSNBackend
 import SBSNCore
+import SBSNUI
 import SwiftUI
 import UIKit
 
@@ -110,6 +111,19 @@ struct PhotoDetailView: View {
                     .foregroundStyle(.red)
             }
             deliveryStatus(photo)
+            Divider()
+            HStack {
+                NavigationLink(value: CustomerFeatures.retouch) {
+                    Label(CustomerFeatures.retouch.title, systemImage: CustomerFeatures.retouch.systemImage)
+                }
+                .accessibilityIdentifier("planned.retouch")
+                NavigationLink(value: CustomerFeatures.shareAndPrint) {
+                    Label(CustomerFeatures.shareAndPrint.title, systemImage: CustomerFeatures.shareAndPrint.systemImage)
+                }
+                .accessibilityIdentifier("planned.shareAndPrint")
+            }
+            .buttonStyle(.bordered)
+            .font(.footnote)
         }
     }
 

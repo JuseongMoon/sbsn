@@ -3,35 +3,31 @@ import SBSNCore
 import SBSNUI
 import SwiftUI
 
-/// 활성 티켓 화면. 티켓 리스너를 붙이고 단계(`phase`)에 따라 만남 화면·사진 화면·취소 안내를 보여 준다.
+/// 활성 티켓 화면. 단계(`phase`)에 따라 만남 화면·사진 화면·취소 안내를 보여 준다.
 ///
-/// 시작·취소·종료 같은 쓰기는 서버 커밋이 끝난 뒤에만 화면을 바꾼다: 쓰는 동안 들어온 스냅샷은 `latestTicket`에만 두고
-/// 끝난 뒤 한 번에 반영한다(리스너는 로컬 쓰기를 추정값으로 먼저 주기 때문).
+/// 티켓 리스너는 `TicketWorkspace`가 갖고 뿌리 화면의 `TicketBackgroundWork`가 돌린다(다른 탭에 있어도 이어지게).
+/// 시작·취소·종료 같은 쓰기는 서버 커밋이 끝난 뒤에만 화면을 바꾼다: 쓰는 동안에는 쓰기 직전 티켓을 보여 주고
+/// 끝난 뒤 가장 최근 스냅샷으로 돌아간다(리스너는 로컬 쓰기를 추정값으로 먼저 주기 때문).
 struct CustomerTicketView: View {
-    let ticketId: String
-    let myUid: String
+    let workspace: TicketWorkspace
 
     @Environment(CustomerSession.self) private var session
-    @State private var workspace: TicketWorkspace
-    @State private var ticket: TicketRecord?
-    @State private var latestTicket: TicketRecord?
-    @State private var hasReceivedSnapshot = false
-    @State private var loadError: String?
-    @State private var listenerGeneration = 0
+    /// 쓰는 동안 화면에 고정해 두는 티켓
+    @State private var ticketBeforeWrite: TicketRecord?
     @State private var isWorking = false
     @State private var actionError: String?
-    @State private var hasReleasedLock = false
+    @State private var showsPayment = false
+    /// 만나기 화면 "…" 메뉴에서 연 빈 페이지
+    @State private var openedFeature: PlannedFeature?
     @State private var showsCancelConfirm = false
     @State private var showsEndConfirm = false
     @State private var showsChat = false
     /// `canEnd`와 작가 응답 없음 안내는 시각에 따라 달라지므로 주기적으로 갱신한다.
     @State private var now = Date()
 
-    init(ticketId: String, myUid: String) {
-        self.ticketId = ticketId
-        self.myUid = myUid
-        _workspace = State(initialValue: TicketWorkspace(ticketId: ticketId, myUid: myUid))
-    }
+    private var ticketId: String { workspace.ticketId }
+    private var myUid: String { workspace.myUid }
+    private var ticket: TicketRecord? { isWorking ? ticketBeforeWrite : workspace.latestTicket }
 
     var body: some View {
         NavigationStack {
@@ -39,11 +35,16 @@ struct CustomerTicketView: View {
                 .navigationTitle(ticket?.photographerDisplayName ?? "촬영")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { toolbarContent }
-                .task(id: listenerGeneration) { await listen() }
+                .navigationDestination(item: $openedFeature) { PlannedFeaturePage($0) }
                 .task { await tickClock() }
                 .task { await CustomerAppDelegate.requestAuthorizationIfNeeded() }
-                .onChange(of: ticket?.phase, initial: true) { _, phase in handlePhaseChange(phase) }
                 .sheet(isPresented: $showsChat) { chatSheet }
+                .sheet(isPresented: $showsPayment) {
+                    PaymentPlaceholderSheet(onContinue: {
+                        showsPayment = false
+                        startTicket()
+                    }, onClose: { showsPayment = false })
+                }
                 .confirmationDialog("촬영을 취소할까요?", isPresented: $showsCancelConfirm, titleVisibility: .visible) {
                     Button("촬영 취소", role: .destructive, action: cancelTicket)
                     Button("돌아가기", role: .cancel) {}
@@ -61,13 +62,13 @@ struct CustomerTicketView: View {
 
     @ViewBuilder
     private var content: some View {
-        if let loadError {
+        if let loadError = workspace.loadError {
             ContentUnavailableView {
                 Label("촬영 정보를 불러오지 못했습니다", systemImage: "wifi.exclamationmark")
             } description: {
                 Text(loadError)
             } actions: {
-                Button("다시 시도") { listenerGeneration += 1 }
+                Button("다시 시도") { workspace.listenerGeneration += 1 }
                     .buttonStyle(.borderedProminent)
                 Button("지도로 돌아가기") { session.forgetLocalTicket() }
             }
@@ -82,7 +83,7 @@ struct CustomerTicketView: View {
             case .cancelled:
                 cancelledView(ticket)
             }
-        } else if hasReceivedSnapshot {
+        } else if workspace.hasReceivedSnapshot {
             ContentUnavailableView {
                 Label(session.isOnline ? "촬영 정보를 찾을 수 없습니다" : "오프라인입니다", systemImage: "questionmark.folder")
             } description: {
@@ -119,7 +120,8 @@ struct CustomerTicketView: View {
                         .disabled(isWorking)
                 }
                 if ticket.canStart(.customer) {
-                    Button(action: startTicket) {
+                    // 촬영료 결제 자리 화면을 먼저 띄운다. 그 화면의 "결제 없이 계속"이 시작을 기록한다(결제 없음, D003).
+                    Button { showsPayment = true } label: {
                         Group {
                             if isWorking {
                                 ProgressView()
@@ -150,8 +152,17 @@ struct CustomerTicketView: View {
                         .foregroundStyle(.red)
                 }
                 if ticket.phase == .ended {
-                    Button("새 촬영 찾기") { session.forgetLocalTicket() }
-                        .buttonStyle(.borderedProminent)
+                    HStack(spacing: 12) {
+                        Button("새 촬영 찾기") { session.forgetLocalTicket() }
+                            .buttonStyle(.borderedProminent)
+                        NavigationLink {
+                            PlannedFeaturePage(CustomerFeatures.review)
+                        } label: {
+                            Text("리뷰 남기기")
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("planned.review")
+                    }
                 } else if canEnd {
                     Text("작가가 응답하지 않으면 촬영을 종료할 수 있습니다")
                         .font(.footnote)
@@ -162,6 +173,7 @@ struct CustomerTicketView: View {
                 }
             }
             .padding()
+            .frame(maxWidth: .infinity)
             .background(.regularMaterial)
         }
     }
@@ -184,6 +196,19 @@ struct CustomerTicketView: View {
                 Button("채팅", systemImage: "bubble.left.and.bubble.right") { showsChat = true }
             }
         }
+        if let ticket, ticket.canCancel {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu("더 보기", systemImage: "ellipsis.circle") {
+                    Button(CustomerFeatures.briefing.title, systemImage: CustomerFeatures.briefing.systemImage) {
+                        openedFeature = CustomerFeatures.briefing
+                    }
+                    Button(CustomerFeatures.safety.title, systemImage: CustomerFeatures.safety.systemImage) {
+                        openedFeature = CustomerFeatures.safety
+                    }
+                }
+                .accessibilityIdentifier("customer.meetup.more")
+            }
+        }
     }
 
     private var chatSheet: some View {
@@ -199,48 +224,11 @@ struct CustomerTicketView: View {
         }
     }
 
-    // MARK: - 리스너
-
-    private func listen() async {
-        loadError = nil
-        do {
-            for try await update in TicketService.ticket(ticketId) {
-                latestTicket = update
-                hasReceivedSnapshot = true
-                if !isWorking {
-                    ticket = update
-                }
-            }
-        } catch {
-            guard !Task.isCancelled else { return }
-            loadError = error.localizedDescription
-        }
-    }
-
     private func tickClock() async {
         while !Task.isCancelled {
             try? await Task.sleep(for: .seconds(60))
             now = Date()
         }
-    }
-
-    /// 끝나거나 취소되면 고객 잠금을 한 번만 푼다(실패는 무시). 취소는 다음 실행 때 다시 열리지 않게 저장값도 지운다.
-    private func handlePhaseChange(_ phase: TicketPhase?) {
-        switch phase {
-        case .ended:
-            releaseLockOnce()
-        case .cancelled:
-            releaseLockOnce()
-            session.clearStoredTicket(ticketId)
-        default:
-            break
-        }
-    }
-
-    private func releaseLockOnce() {
-        guard !hasReleasedLock else { return }
-        hasReleasedLock = true
-        Task { try? await TicketService.releaseCustomerLock(uid: myUid) }
     }
 
     // MARK: - 쓰기
@@ -265,6 +253,7 @@ struct CustomerTicketView: View {
             actionError = "인터넷 연결을 확인해 주세요."
             return
         }
+        ticketBeforeWrite = workspace.latestTicket
         isWorking = true
         actionError = nil
         Task {
@@ -274,7 +263,7 @@ struct CustomerTicketView: View {
                 actionError = "\(label)하지 못했습니다: \(error.localizedDescription)"
             }
             isWorking = false
-            ticket = latestTicket
+            ticketBeforeWrite = nil
         }
     }
 }

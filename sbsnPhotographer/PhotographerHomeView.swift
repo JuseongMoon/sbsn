@@ -1,7 +1,9 @@
 import SBSNCore
+import SBSNUI
 import SwiftUI
 
-/// 작가 첫 화면: 이름, "촬영 가능" 토글, 진행 중인 촬영, 알림·전원 경고.
+/// 작가 "촬영" 탭의 첫 화면: 진행 중인 촬영, 이름, "촬영 가능" 토글, 새 요청 설정 자리, 알림·전원 경고.
+/// 개발 메뉴는 마이 탭으로 옮겼다(`PhotographerDeveloperPage`).
 struct PhotographerHomeView: View {
     @Environment(PhotographerSession.self) private var session
 
@@ -62,10 +64,20 @@ struct PhotographerHomeView: View {
                         }
                     }
                 }
+                PlannedFeatureLink(PhotographerFeatures.activityArea)
+                PlannedFeatureLink(PhotographerFeatures.breakTime)
             } header: {
                 Text("대기")
             } footer: {
                 Text("켜 두면 앱이 뒤에 있거나 화면이 꺼져도 고객 지도에 내 위치(100m 단위)가 보입니다. 고객이 확정하면 알림이 옵니다. 앱을 쓸어 올려 끄면 위치 공유와 알림 처리가 멈춥니다.")
+            }
+
+            Section {
+                PlannedFeatureLink(PhotographerFeatures.requestPolicy)
+            } header: {
+                Text("새 요청")
+            } footer: {
+                Text("지금은 고객이 확정하면 바로 매칭됩니다.")
             }
 
             if !warnings.isEmpty {
@@ -81,23 +93,6 @@ struct PhotographerHomeView: View {
                 Section {
                     Text(message)
                         .foregroundStyle(.red)
-                }
-            }
-
-            Section("개발") {
-                if let delivery = session.delivery {
-                    NavigationLink("카메라 전송 측정") {
-                        CameraTransferTestView(model: delivery, showsMeasurements: true)
-                    }
-                }
-                LabeledContent("작가 ID", value: session.uid ?? "-")
-                    .font(.caption)
-                Button("진행 중인 촬영 로컬 정리", role: .destructive) {
-                    session.clearLocalTicket()
-                }
-                .disabled(session.ticket == nil)
-                Button("익명 계정 재발급", role: .destructive) {
-                    Task { await session.resetAnonymousAccount() }
                 }
             }
         }

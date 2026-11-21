@@ -7,7 +7,8 @@ import SBSNUI
 /// 매칭 뒤 만나는 동안의 위치 공유: 작가 위치를 듣고 내 위치를 올린다.
 ///
 /// 내 위치는 10m 넘게 움직였거나 마지막 발행에서 15초가 지났을 때 올린다. 멈춰 있으면 위치 업데이트가 드물어
-/// 15초 조건은 별도 heartbeat 루프가 맡는다. 두 루프는 뷰의 `.task`로 돌려 화면을 떠나면 함께 끝난다.
+/// 15초 조건은 별도 heartbeat 루프가 맡는다. 두 루프는 `TicketBackgroundWork`가 만나는 단계 동안 돌린다:
+/// 탭을 옮겨도 이어지고, 둘 다 시작하거나 티켓이 바뀌면 함께 끝난다.
 @Observable
 @MainActor
 final class TicketLocationSharing {
