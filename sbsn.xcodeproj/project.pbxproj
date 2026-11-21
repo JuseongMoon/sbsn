@@ -501,6 +501,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "지도에서 촬영 가능한 작가를 찾고, 매칭된 작가에게 내 위치를 보여 주기 위해 위치를 사용합니다.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "구매한 사진을 사진 앱에 저장하기 위해 추가 권한이 필요합니다.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "개발 시험에서 저장한 사진의 원본을 다시 읽습니다.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

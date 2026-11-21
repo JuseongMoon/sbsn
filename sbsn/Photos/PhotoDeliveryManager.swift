@@ -189,7 +189,8 @@ final class PhotoDeliveryManager {
 
     /// 변경 블록은 Photos가 자기 큐에서 돌리므로 격리 밖(detached)에서 만들고 파일 URL만 넘긴다.
     /// 파일을 옮기므로(`shouldMoveFile`) 캐시에는 남지 않고, 확장자가 `.jpg`라 형식을 알아본다.
-    private static func saveToPhotoLibrary(fileURL: URL) async throws {
+    /// 개발 메뉴의 저장 시험(`SavedPhotoProbeView`)도 같은 경로를 쓴다.
+    static func saveToPhotoLibrary(fileURL: URL) async throws {
         try await Task.detached {
             try await PHPhotoLibrary.shared().performChanges {
                 let request = PHAssetCreationRequest.forAsset()

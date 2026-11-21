@@ -141,6 +141,11 @@ struct CustomerDeveloperPage: View {
                     Button("닫기") { session.dismissDebugMessage() }
                 }
             }
+            #if DEBUG
+            Section("시험") {
+                NavigationLink("사진 앱 저장 시험") { SavedPhotoProbeView() }
+            }
+            #endif
             Section("예시 화면 전체(\(CustomerFeatures.all.count))") {
                 ForEach(CustomerFeatures.all) { CustomerSampleLink($0) }
                 Button("채팅 신고 시트") { showsChatReport = true }

@@ -161,6 +161,12 @@ struct PhotographerDeveloperPage: View {
                     Task { await session.resetAnonymousAccount() }
                 }
             }
+            #if DEBUG
+            Section("시험") {
+                NavigationLink("메타데이터 경로 시험") { MetadataProbeView() }
+                    .accessibilityIdentifier("dev.metadataProbe")
+            }
+            #endif
             Section("예시 화면 전체(\(PhotographerFeatures.all.count))") {
                 ForEach(PhotographerFeatures.all) { PhotographerSampleLink($0) }
                 Button("채팅 신고 시트") { showsChatReport = true }
