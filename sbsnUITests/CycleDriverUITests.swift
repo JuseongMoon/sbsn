@@ -386,6 +386,30 @@ final class CycleDriverUITests: XCTestCase {
         attachScreenshot("C7 고르는 중", app: app)
     }
 
+    /// 내 사진 복원: 진행 중 화면에 있으면 "새 촬영 찾기"로 떠난 뒤(`SBSN_RELAUNCH=1`이면 앱을 끄고 다시 켠 뒤)
+    /// 내 사진 탭 "지난 촬영"에서 갤러리를 열어 사진 수를 센다(D040 ①).
+    func test_C19_customerFindsGalleryInMyPhotos() throws {
+        let app = customerApp
+        if ProcessInfo.processInfo.environment["SBSN_RELAUNCH"] == "1" {
+            app.terminate()
+        }
+        app.activate()
+        openShootTab(app)
+        let newShoot = app.buttons["customer.newShoot"]
+        if newShoot.waitForExistence(timeout: 5) {
+            newShoot.tap()
+        }
+        app.tabBars.buttons["내 사진"].tap()
+        let gallery = app.descendants(matching: .any)["photos.gallery"].firstMatch
+        XCTAssertTrue(gallery.waitForExistence(timeout: 30), "내 사진 탭에 지난 촬영이 없음")
+        attachScreenshot("C19 내 사진", app: app)
+        gallery.tap()
+        let cells = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'photo.cell.'"))
+        XCTAssertTrue(waitUntil(timeout: 60) { cells.count > 0 }, "지난 촬영 갤러리에 사진이 없음")
+        print("SBSN 내 사진 복원 \(Date().ISO8601Format(.iso8601.time(includingFractionalSeconds: true))) 사진 \(cells.count)장")
+        attachScreenshot("C19 지난 촬영 갤러리", app: app)
+    }
+
     /// 10분 넘게 갱신이 없는 작가가 지도에서 빠지는지 본다. 관리자가 갱신 시각만 다른 공개 상태 셋을 미리 넣어 둔다.
     /// FRESH(방금)는 계속 보이고, STALE(곧 10분)은 보이다가 사라지고, GONE(이미 10분 넘음)은 처음부터 없어야 한다.
     func test_C10_customerSeesStalePhotographerHidden() throws {
