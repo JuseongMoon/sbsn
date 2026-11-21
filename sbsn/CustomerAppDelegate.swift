@@ -7,7 +7,7 @@ import SBSNBackend
 import UIKit
 import UserNotifications
 
-/// 고객 앱의 원격 알림. 작가 메시지, 작가의 시작·취소, 촬영 종료, 나중에 올라온 구매 사진이 배너로 온다(`CustomerPush`).
+/// 고객 앱의 원격 알림. 작가 메시지, 작가의 시작·취소, 촬영 종료, 갤러리 공개가 배너로 온다(`CustomerPush`).
 ///
 /// 앱이 백그라운드에 있으면 티켓 리스너가 멈추므로, 만나러 걸어가며 폰을 넣어 둔 고객도 작가의 연락을 알 수 있게 한다.
 /// 알림을 탭하면 앱이 열리고 진행 중인 티켓 화면이 그대로 보인다.
@@ -35,13 +35,22 @@ final class CustomerAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
     }
 
     /// 앱이 화면에 떠 있을 때: 작가 메시지는 채팅 화면이 아닐 수 있어 배너로 띄우고,
-    /// 시작·취소·종료·사진 준비는 화면이 이미 바뀌므로 알림 목록에만 남긴다.
+    /// 시작·취소·종료는 화면이 이미 바뀌므로 알림 목록에만 남긴다. 갤러리 공개는 다른 탭에 있을 수 있어 배너로 띄운다.
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        switch CustomerPush.notification(from: notification.request.content.userInfo) {
-        case .message: [.banner, .list, .sound]
-        case .ticket, .photoReady, nil: [.list]
+        let push = CustomerPush.notification(from: notification.request.content.userInfo)
+        switch push {
+        case .message: return [.banner, .list, .sound]
+        case .ticket where push?.isGalleryPublished == true: return [.banner, .list, .sound]
+        case .ticket, nil: return [.list]
         }
+    }
+
+    /// 배너를 누르면: 갤러리 공개는 그 갤러리로 간다. 나머지는 앱만 열린다(진행 중 티켓 화면이 그대로 보인다).
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        guard let push = CustomerPush.notification(from: response.notification.request.content.userInfo), push.isGalleryPublished
+        else { return }
+        await CustomerNotificationRouter.shared.openGallery(push.ticketID)
     }
 
     /// 매칭된 뒤 처음 티켓 화면을 열 때 알림 권한을 묻는다. 작가가 메시지를 보내거나 먼저 시작하면 알 수 있게 한다.

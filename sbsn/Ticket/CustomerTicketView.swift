@@ -3,7 +3,7 @@ import SBSNCore
 import SBSNUI
 import SwiftUI
 
-/// 활성 티켓 화면. 단계(`phase`)에 따라 만남 화면·사진 화면·취소 안내를 보여 준다.
+/// 활성 티켓 화면. 단계(`phase`)에 따라 만남 화면·촬영 중 화면·사진 화면(고르는 중 → 갤러리)·취소 안내를 보여 준다.
 ///
 /// 티켓 리스너는 `TicketWorkspace`가 갖고 뿌리 화면의 `TicketBackgroundWork`가 돌린다(다른 탭에 있어도 이어지게).
 /// 시작·취소·종료 같은 쓰기는 서버 커밋이 끝난 뒤에만 화면을 바꾼다: 쓰는 동안에는 쓰기 직전 티켓을 보여 주고
@@ -60,7 +60,7 @@ struct CustomerTicketView: View {
                     Button("촬영 종료", role: .destructive, action: endTicket)
                     Button("돌아가기", role: .cancel) {}
                 } message: {
-                    Text("종료하면 더 이상 사진이 올라오지 않습니다. 이미 올라온 사진은 계속 구매할 수 있습니다.")
+                    Text("종료하면 작가가 사진을 골라 공개할 수 있습니다. 공개되면 알림으로 알려 드립니다.")
                 }
         }
     }
@@ -79,13 +79,26 @@ struct CustomerTicketView: View {
                     .buttonStyle(.borderedProminent)
                 Button("지도로 돌아가기") { session.forgetLocalTicket() }
             }
+        } else if let ticket, !ticket.isCurated {
+            // 전환 전에 만든 실시간 FTP 티켓(D039). 이 버전은 사진을 보여 주지 못한다.
+            ContentUnavailableView {
+                Label("이전 방식 촬영입니다", systemImage: "exclamationmark.triangle")
+            } description: {
+                Text("이 촬영은 이 버전에서 이어 갈 수 없습니다.")
+            } actions: {
+                Button("지도로 돌아가기") { session.forgetLocalTicket() }
+                    .buttonStyle(.borderedProminent)
+            }
         } else if let ticket {
             switch ticket.phase {
             case .matched, .waitingForPhotographer, .waitingForCustomer:
                 TicketMeetupView(ticket: ticket, myUid: myUid, sharing: workspace.locationSharing, now: now)
                     .safeAreaInset(edge: .bottom) { meetupBar(ticket) }
-            case .shooting, .ended:
-                TicketPhotoGridView(ticket: ticket, workspace: workspace)
+            case .shooting:
+                CustomerShootingView(ticket: ticket)
+                    .safeAreaInset(edge: .bottom) { photoBar(ticket) }
+            case .ended:
+                GalleryScreen(ticketID: ticket.id)
                     .safeAreaInset(edge: .bottom) { photoBar(ticket) }
             case .cancelled:
                 cancelledView(ticket)
@@ -159,9 +172,11 @@ struct CustomerTicketView: View {
                         .foregroundStyle(.red)
                 }
                 if ticket.phase == .ended {
+                    // 사진은 내 사진 탭에 남는다(공개 전이어도 공개되면 알림이 온다).
                     HStack(spacing: 12) {
                         Button("새 촬영 찾기") { session.forgetLocalTicket() }
                             .buttonStyle(.borderedProminent)
+                            .accessibilityIdentifier("customer.newShoot")
                         NavigationLink {
                             CustomerSampleScreen(CustomerFeatures.review)
                         } label: {
@@ -262,7 +277,8 @@ struct CustomerTicketView: View {
     }
 
     private func endTicket() {
-        perform("종료") { try await TicketService.endAsCustomer(ticketId: ticketId) }
+        guard let ticket else { return }
+        perform("종료") { try await TicketService.endAsCustomer(ticket: ticket) }
     }
 
     /// 오프라인이면 보내지 않고 안내한다. 성공이든 실패든 끝난 뒤에 가장 최근 스냅샷을 화면에 반영한다.

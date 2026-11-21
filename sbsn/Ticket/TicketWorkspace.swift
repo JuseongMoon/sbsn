@@ -5,17 +5,14 @@ import SBSNCore
 
 /// 티켓 하나를 보는 동안 화면들이 같이 쓰는 객체 묶음. 활성 티켓이 바뀌면 통째로 새로 만든다.
 ///
-/// 티켓 리스너·위치 공유·누락 사진 확인은 화면이 아니라 `TicketBackgroundWork`(뿌리 화면에 붙음)가 돌린다.
+/// 티켓 리스너·위치 공유는 화면이 아니라 `TicketBackgroundWork`(뿌리 화면에 붙음)가 돌린다.
 /// 탭을 옮기면 그 탭 화면의 `.task`가 취소되므로, 고객이 "내 사진"·"마이"에 있는 동안에도 계속 돌게 하려는 것이다.
+/// 끝난 촬영의 사진(갤러리)은 진행 중 티켓과 따로 `GalleryStore`가 든다(D040 ①).
 @Observable
 @MainActor
 final class TicketWorkspace {
     let ticketId: String
     let myUid: String
-    let downloader: TicketPhotoDownloader
-    let previews: PhotoPreviewLoader
-    let delivery: PhotoDeliveryManager
-    let favorites: FavoriteToggler
     let locationSharing: TicketLocationSharing
 
     /// 리스너가 마지막으로 받은 티켓. 화면은 쓰는 동안에는 이 값을 바로 반영하지 않는다(`CustomerTicketView`).
@@ -30,10 +27,6 @@ final class TicketWorkspace {
     init(ticketId: String, myUid: String) {
         self.ticketId = ticketId
         self.myUid = myUid
-        downloader = TicketPhotoDownloader(ticketID: ticketId)
-        previews = PhotoPreviewLoader(downloader: downloader)
-        delivery = PhotoDeliveryManager(ticketId: ticketId, downloader: downloader)
-        favorites = FavoriteToggler(ticketId: ticketId)
         locationSharing = TicketLocationSharing(ticketId: ticketId, myUid: myUid)
     }
 
@@ -43,11 +36,6 @@ final class TicketWorkspace {
         case .matched, .waitingForPhotographer, .waitingForCustomer: true
         default: false
         }
-    }
-
-    /// 촬영이 시작된 뒤부터 사진 목록을 듣는다.
-    var hasPhotos: Bool {
-        latestTicket?.phase == .shooting || latestTicket?.phase == .ended
     }
 
     func listenToTicket() async {

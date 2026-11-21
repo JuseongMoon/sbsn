@@ -2,7 +2,7 @@ import SBSNBackend
 import SBSNCore
 import SwiftUI
 
-/// 활성 티켓의 오래 도는 작업: 티켓 리스너, 만나는 동안의 위치 공유, 촬영 뒤 사진 목록과 누락 사진 확인, 끝난 티켓의 잠금 해제.
+/// 활성 티켓의 오래 도는 작업: 티켓 리스너, 만나는 동안의 위치 공유, 끝난 티켓의 잠금 해제와 갤러리 등록.
 ///
 /// 뿌리 화면이 탭 뷰의 배경으로 붙인다. 탭 화면의 `.task`는 다른 탭으로 가면 취소되지만 이 뷰는 계속 떠 있어서,
 /// 고객이 어느 탭에 있어도 위치 공유·상태 갱신·사진 자동 저장이 이어진다. 티켓이 바뀌면 `.id`로 새로 붙는다.
@@ -10,6 +10,7 @@ struct TicketBackgroundWork: View {
     let workspace: TicketWorkspace
 
     @Environment(CustomerSession.self) private var session
+    @Environment(GalleryStore.self) private var galleries
 
     var body: some View {
         Color.clear
@@ -22,11 +23,6 @@ struct TicketBackgroundWork: View {
                     group.addTask { await sharing.shareMyLocation() }
                 }
             }
-            .task(id: workspace.hasPhotos) {
-                guard workspace.hasPhotos else { return }
-                workspace.delivery.startListening()
-                await workspace.delivery.watchForMissingDocuments()
-            }
             .onChange(of: workspace.latestTicket?.phase, initial: true) { _, phase in handlePhaseChange(phase) }
             .accessibilityHidden(true)
     }
@@ -36,6 +32,10 @@ struct TicketBackgroundWork: View {
         switch phase {
         case .ended:
             releaseLockOnce()
+            // 끝난 촬영은 내 사진 탭이 따로 기억한다. 새 촬영을 시작해도 공개되면 여기서 사진을 본다.
+            if workspace.latestTicket?.isCurated == true {
+                galleries.remember(workspace.ticketId)
+            }
         case .cancelled:
             releaseLockOnce()
             session.clearStoredTicket(workspace.ticketId)

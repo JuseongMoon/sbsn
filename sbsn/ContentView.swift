@@ -21,7 +21,10 @@ enum CustomerTab: Hashable {
 struct ContentView: View {
     @State private var session = CustomerSession()
     @State private var workspaces = TicketWorkspaceStore()
+    @State private var galleries = GalleryStore()
     @State private var selectedTab = CustomerTab.shoot
+    @State private var photosPath: [String] = []
+    private let router = CustomerNotificationRouter.shared
 
     var body: some View {
         Group {
@@ -46,7 +49,11 @@ struct ContentView: View {
             }
         }
         .environment(session)
+        .environment(galleries)
         .task { await session.start() }
+        .task(id: session.uid) {
+            if let uid = session.uid { await galleries.start(uid: uid) }
+        }
     }
 
     private func tabs(uid: String) -> some View {
@@ -64,7 +71,7 @@ struct ContentView: View {
             .tabItem { Label("촬영", systemImage: "camera") }
             .tag(CustomerTab.shoot)
 
-            MyPhotosTab(selectedTab: $selectedTab)
+            MyPhotosTab(selectedTab: $selectedTab, path: $photosPath)
                 .tabItem { Label("내 사진", systemImage: "photo.on.rectangle") }
                 .tag(CustomerTab.photos)
 
@@ -81,6 +88,18 @@ struct ContentView: View {
         .onChange(of: session.activeTicketId) { _, ticketId in
             if ticketId != nil {
                 selectedTab = .shoot
+            }
+        }
+        // 공개 알림을 누르면 그 갤러리로 간다. 진행 중인 촬영이면 촬영 탭이 이미 그 화면이다.
+        .onChange(of: router.pendingGalleryTicketID, initial: true) { _, ticketID in
+            guard let ticketID else { return }
+            router.pendingGalleryTicketID = nil
+            galleries.remember(ticketID)
+            if session.activeTicketId == ticketID {
+                selectedTab = .shoot
+            } else {
+                photosPath = [ticketID]
+                selectedTab = .photos
             }
         }
     }

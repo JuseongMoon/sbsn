@@ -11,10 +11,10 @@ import UIKit
 /// 미리보기(워터마크 저화질)는 사진 앱에 저장하지 않는다.
 struct PhotoDetailView: View {
     let ticket: TicketRecord
-    let fileName: String
-    /// 화면을 열 때의 목록. 리스너 값이 아직 없을 때만 쓴다.
-    let photos: [PhotoRecord]
-    let workspace: TicketWorkspace
+    let photoID: String
+    /// 갤러리 안 순서(0부터). 파일 이름이 없을 때 "사진 n"으로 쓴다.
+    let index: Int
+    let workspace: GalleryWorkspace
 
     @Environment(CustomerSession.self) private var session
     @Environment(\.openURL) private var openURL
@@ -23,9 +23,11 @@ struct PhotoDetailView: View {
     @State private var purchaseError: String?
 
     private var photo: PhotoRecord? {
-        // 화면을 열 때 넘겨받은 목록은 그 뒤로 바뀌지 않으므로, 리스너가 갱신하는 목록에서 찾는다.
-        (workspace.delivery.photos.isEmpty ? photos : workspace.delivery.photos).first { $0.fileName == fileName }
+        workspace.delivery.photos.first { $0.id == photoID }
     }
+
+    /// 구매 기한 확인에 쓰는 최신 티켓(갤러리 리스너 값)
+    private var currentTicket: TicketRecord { workspace.ticket ?? ticket }
 
     var body: some View {
         ScrollView {
@@ -40,11 +42,11 @@ struct PhotoDetailView: View {
             }
             .padding()
         }
-        .navigationTitle(fileName)
+        .navigationTitle(photo?.displayName(index: index) ?? "사진 \(index + 1)")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: photo?.hasPreview) {
             if photo?.hasPreview == true {
-                workspace.previews.request(fileName)
+                workspace.previews.request(photoID)
             }
         }
         .confirmationDialog("구매하면 고화질 사진이 사진 앱에 자동 저장됩니다. 취소할 수 없습니다.",
@@ -56,12 +58,12 @@ struct PhotoDetailView: View {
 
     @ViewBuilder
     private var preview: some View {
-        if let image = workspace.previews.images[fileName] {
+        if let image = workspace.previews.images[photoID] {
             Image(uiImage: image)
                 .resizable()
                 .scaledToFit()
                 .clipShape(RoundedRectangle(cornerRadius: 8))
-        } else if let failure = workspace.previews.failures[fileName] {
+        } else if let failure = workspace.previews.failures[photoID] {
             ContentUnavailableView("미리보기를 불러오지 못했습니다", systemImage: "exclamationmark.triangle", description: Text(failure))
         } else {
             ProgressView()
@@ -88,7 +90,7 @@ struct PhotoDetailView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            if photo.canPurchase(in: ticket.phase) {
+            if photo.canPurchase(on: currentTicket) {
                 Button {
                     showsPurchaseConfirm = true
                 } label: {
@@ -133,15 +135,12 @@ struct PhotoDetailView: View {
             Label(badge.text, systemImage: badge.symbol)
                 .font(.subheadline)
                 .accessibilityIdentifier("photo.delivery")
-        } else if !photo.isPurchased, ticket.phase == .ended, !photo.isFullResolutionReady {
-            Text("촬영이 끝나 고화질본이 없는 사진은 구매할 수 없습니다")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        } else if !photo.hasPreview {
-            Text("미리보기가 올라오는 중입니다")
+        } else if !photo.isPurchased, !currentTicket.acceptsGalleryPurchase() {
+            Text("구매 기한이 지났습니다")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
+        GalleryDeadlineText(ticket: currentTicket)
         switch workspace.delivery.status(of: photo) {
         case .downloadedOnly(let url):
             VStack(alignment: .leading, spacing: 8) {
@@ -155,12 +154,12 @@ struct PhotoDetailView: View {
                     .buttonStyle(.bordered)
                     Button("설정 열기", action: openSettings)
                         .buttonStyle(.bordered)
-                    Button("다시 저장") { workspace.delivery.retry(fileName) }
+                    Button("다시 저장") { workspace.delivery.retry(photoID) }
                         .buttonStyle(.bordered)
                 }
             }
         case .failed:
-            Button("다시 시도") { workspace.delivery.retry(fileName) }
+            Button("다시 시도") { workspace.delivery.retry(photoID) }
                 .buttonStyle(.bordered)
         default:
             EmptyView()
@@ -183,11 +182,14 @@ struct PhotoDetailView: View {
         purchaseError = nil
         Task {
             defer { isPurchasing = false }
-            // 구매를 먼저 기록해 작가 앱이 바로 고화질본을 올리게 한다. 권한 창에 답하는 동안 구매가 멈추면 안 된다(실기기에서 확인).
+            // 구매를 먼저 기록한다. 권한 창에 답하는 동안 구매가 멈추면 안 된다(실기기에서 확인).
             do {
-                try await TicketPhotoCatalog.purchase(ticketId: ticket.id, fileName: fileName)
+                try await TicketPhotoCatalog.purchase(ticketId: ticket.id, photoId: photoID)
             } catch {
-                purchaseError = "구매를 기록하지 못했습니다: \(error.localizedDescription)"
+                // 기한 경계에서 늦게 도착한 요청은 서버가 거부한다(공개 + 168시간).
+                purchaseError = currentTicket.acceptsGalleryPurchase()
+                    ? "구매를 기록하지 못했습니다: \(error.localizedDescription)"
+                    : "구매 기한이 지나 구매하지 못했습니다."
                 return
             }
             // 처음 구매할 때만 사진 앱 추가 권한을 묻는다. 거부해도 구매는 유지되고 파일 내보내기로 대신한다.

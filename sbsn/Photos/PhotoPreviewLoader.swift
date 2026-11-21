@@ -21,44 +21,44 @@ final class PhotoPreviewLoader {
         self.downloader = downloader
     }
 
-    func request(_ fileName: String) {
-        guard images[fileName] == nil, !running.contains(fileName), !queue.contains(fileName) else { return }
-        failures[fileName] = nil
-        queue.append(fileName)
+    func request(_ photoID: String) {
+        guard images[photoID] == nil, !running.contains(photoID), !queue.contains(photoID) else { return }
+        failures[photoID] = nil
+        queue.append(photoID)
         pump()
     }
 
     /// 셀이 화면에서 사라졌을 때. 이미 받는 중이면 그대로 두고(캐시에 남으니 낭비가 아니다) 대기 중인 것만 뺀다.
-    func cancelRequest(_ fileName: String) {
-        queue.removeAll { $0 == fileName }
+    func cancelRequest(_ photoID: String) {
+        queue.removeAll { $0 == photoID }
     }
 
     private func pump() {
         while running.count < Self.maxConcurrentDownloads, !queue.isEmpty {
-            let fileName = queue.removeFirst()
-            running.insert(fileName)
-            Task { await load(fileName) }
+            let photoID = queue.removeFirst()
+            running.insert(photoID)
+            Task { await load(photoID) }
         }
     }
 
-    private func load(_ fileName: String) async {
+    private func load(_ photoID: String) async {
         defer {
-            running.remove(fileName)
+            running.remove(photoID)
             pump()
         }
         do {
-            let data = try await downloader.preview(fileName: fileName)
+            let data = try await downloader.preview(photoId: photoID)
             // 디코딩은 메인 밖에서 끝내 두고 그릴 준비가 된 이미지만 넘긴다.
             let image = await Task.detached(priority: .userInitiated) {
                 UIImage(data: data)?.preparingForDisplay()
             }.value
             if let image {
-                images[fileName] = image
+                images[photoID] = image
             } else {
-                failures[fileName] = "이미지를 읽을 수 없습니다"
+                failures[photoID] = "이미지를 읽을 수 없습니다"
             }
         } catch {
-            failures[fileName] = error.localizedDescription
+            failures[photoID] = error.localizedDescription
         }
     }
 }
