@@ -4,7 +4,7 @@ import Foundation
 
 /// 작가 기기의 원격 알림.
 ///
-/// 서버 함수(`firebase/functions`)가 `photographers/{uid}`의 FCM 토큰으로 매칭·채팅·구매 알림을 보낸다.
+/// 서버 함수(백엔드 저장소(웹 프로젝트)의 `firebase/functions`)가 `photographers/{uid}`의 FCM 토큰으로 매칭·채팅·구매 알림을 보낸다.
 /// 매칭과 구매 알림에는 content-available이 함께 들어 있어, 백그라운드에 있던 작가 앱이 잠깐 깨어나 일을 할 수 있다.
 public enum PhotographerPush {
     /// 원격 알림에 담긴 구매

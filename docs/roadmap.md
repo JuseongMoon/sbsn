@@ -50,7 +50,7 @@
   - 하위 `locations/{uid}`(서로의 위치), `messages/{autoId}`(채팅), `photos/{원본 파일명}`(미리보기·고화질본 경로, 찜·구매·전달 시각).
 - 확정 트랜잭션 = 티켓 생성 + 작가 잠금 + 고객 잠금. 규칙이 `getAfter`로 세 쓰기를 묶어, 같은 작가를 두 고객이 동시에 확정하면 하나만 통과한다. 취소 트랜잭션은 잠금을 함께 푼다.
 - Storage: 고화질본은 `fullres/<원본 파일명>.jpg`(image/jpeg). 참여자 확인은 작가 앱이 업로드 때 적는 객체 메타데이터(`customerUid`, `photographerUid`)로 한다. Storage 규칙은 한 번에 Firestore 문서를 2개까지만 읽을 수 있어, 고객의 고화질본 읽기에서만 사진 문서 하나(구매 여부)를 읽는다.
-- 보존: `previews/`·`fullres/`는 30일 뒤 삭제, `photographerPresence`는 갱신이 24시간 없으면 삭제(`firebase/scripts/set_retention_dev.py`).
+- 보존: `previews/`·`fullres/`는 30일 뒤 삭제, `photographerPresence`는 갱신이 24시간 없으면 삭제(백엔드 저장소(웹 프로젝트)의 `firebase/scripts/set_retention_dev.py`).
 
 ## 기대치와 한계(iOS·서비스 제약)
 
@@ -94,7 +94,7 @@
 - 실제 카메라·핫스팟·셀룰러(LTE) 회선. 이전 실증(2026-10-22, 10-25)의 LTE 수치가 기준이다.
 - 작가가 앱을 쓸어 올려 종료한 뒤 배너 탭으로 이어 가기, 시스템 종료 뒤 알림으로 깨어난 복원.
   - 시스템 종료 뒤 복원은 2026-10-28에 확인했다(아래).
-- 현장 실증 순서표와 실증 뒤 시각표 도구: `docs/field-test.md`, `firebase/scripts/field_report_dev.py`.
+- 현장 실증 순서표와 실증 뒤 시각표 도구: `docs/field-test.md`, 백엔드 저장소(웹 프로젝트)의 `firebase/scripts/field_report_dev.py`.
 - 취소 흐름(규칙은 129개 시나리오로 확인), 10분 넘게 조용한 작가 숨김, 알림 배너 표시 모양(발송은 함수 로그로 확인).
   - 취소 흐름은 같은 날 iP9 작가와 아래 교차 시험에서 확인했다. 작가 숨김과 알림 배너는 2026-10-28에 확인했다(아래).
 

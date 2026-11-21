@@ -4,7 +4,7 @@ import Foundation
 
 /// 고객 기기의 원격 알림.
 ///
-/// 서버 함수(`firebase/functions`)가 `customerDevices/{uid}`의 FCM 토큰으로 작가 메시지, 작가의 시작·취소, 촬영 종료,
+/// 서버 함수(백엔드 저장소(웹 프로젝트)의 `firebase/functions`)가 `customerDevices/{uid}`의 FCM 토큰으로 작가 메시지, 작가의 시작·취소, 촬영 종료,
 /// 나중에 올라온 구매 사진을 알린다. 고객 자신이 한 일은 알리지 않는다. 앱을 깨우지는 않고 배너만 온다.
 public enum CustomerPush {
     /// 원격 알림의 종류. 키는 서버 함수의 `data.type`과 맞춘다.

@@ -2,7 +2,7 @@
 
 - 목적: 실제 카메라, 작가 폰 핫스팟, LTE, 밖에서 두 사람이 만나는 흐름으로 MVP 한 사이클을 끝까지 돌린다. 지금까지는 같은 와이파이에서 맥이 카메라 대신 사진을 보냈다(`docs/roadmap.md` "실증 결과").
 - 서버 시각(확정, 작가 앱 받음, 시작, 미리보기, 찜, 구매, 고화질본, 고객 저장)은 자동으로 남는다. 사람은 결과(○ 됨, △ 늦거나 일부, × 안 됨)와 눈으로 본 것만 적는다.
-- 끝나면 맥에서 `firebase/scripts/field_report_dev.py`로 시각표를 뽑아 맨 아래 "결과"에 붙인다.
+- 끝나면 맥에서 백엔드 저장소(웹 프로젝트)의 `firebase/scripts/field_report_dev.py`로 시각표를 뽑아 맨 아래 "결과"에 붙인다.
 
 ## 준비물
 
@@ -50,7 +50,7 @@
 
 ## 끝난 뒤
 
-1. 맥에서 시각표를 뽑는다(토큰은 출력하지 않는다).
+1. 맥에서 시각표를 뽑는다(백엔드 저장소(웹 프로젝트) 루트에서, 토큰은 출력하지 않는다).
    ```
    export SBSN_ADMIN_TOKEN="$(gcloud auth application-default print-access-token)"
    python3 -I firebase/scripts/field_report_dev.py latest <작가 uid>
