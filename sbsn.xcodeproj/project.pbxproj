@@ -498,6 +498,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "십분스냅";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "지도에서 촬영 가능한 작가를 찾고, 매칭된 작가에게 내 위치를 보여 주기 위해 위치를 사용합니다.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "구매한 사진을 사진 앱에 저장하기 위해 추가 권한이 필요합니다.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -509,7 +510,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ScienceFiction.sbsn;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -534,6 +535,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "십분스냅";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "지도에서 촬영 가능한 작가를 찾고, 매칭된 작가에게 내 위치를 보여 주기 위해 위치를 사용합니다.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "구매한 사진을 사진 앱에 저장하기 위해 추가 권한이 필요합니다.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -545,7 +547,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ScienceFiction.sbsn;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -655,6 +657,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = sbsnPhotographer/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "십분스냅 작가";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "카메라에서 촬영한 사진을 같은 네트워크로 받기 위해 로컬 네트워크에 접근합니다.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "촬영 가능 상태일 때 고객 지도에 내 위치를 보여 주고, 매칭된 고객과 서로 위치를 공유하기 위해 위치를 사용합니다. 촬영 가능 상태인 동안에는 앱이 뒤에 있어도 계속 사용합니다.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -666,7 +669,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ScienceFiction.sbsnPhotographer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -692,6 +695,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = sbsnPhotographer/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "십분스냅 작가";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "카메라에서 촬영한 사진을 같은 네트워크로 받기 위해 로컬 네트워크에 접근합니다.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "촬영 가능 상태일 때 고객 지도에 내 위치를 보여 주고, 매칭된 고객과 서로 위치를 공유하기 위해 위치를 사용합니다. 촬영 가능 상태인 동안에는 앱이 뒤에 있어도 계속 사용합니다.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -703,7 +707,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ScienceFiction.sbsnPhotographer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
