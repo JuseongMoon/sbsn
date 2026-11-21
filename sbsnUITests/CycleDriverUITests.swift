@@ -141,6 +141,24 @@ final class CycleDriverUITests: XCTestCase {
         app.tabBars.buttons["촬영"].tap()
     }
 
+    /// 정리: 맥에서 넣은 `Documents/DeleteTickets.txt`의 티켓 폴더만 지운다(개발 메뉴).
+    func test_P16_photographerDeletesListedTickets() throws {
+        let app = photographerApp
+        app.activate()
+        app.tabBars.buttons["마이"].tap()
+        let developer = app.descendants(matching: .any)["my.developer"].firstMatch
+        for _ in 0..<8 where !(developer.exists && developer.isHittable) { app.swipeUp() }
+        developer.tap()
+        let delete = app.buttons["dev.deleteListedTickets"].firstMatch
+        for _ in 0..<8 where !(delete.exists && delete.isHittable) { app.swipeUp() }
+        delete.tap()
+        let result = app.staticTexts["dev.ticketCleanup"]
+        XCTAssertTrue(result.waitForExistence(timeout: 30), "지운 결과가 보이지 않음")
+        print("SBSN 정리 \(result.label)")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tabBars.buttons["촬영"].tap()
+    }
+
     /// 작가 앱을 백그라운드로 보낸다(구매 알림으로 깨어나는지 보는 단계 앞).
     func test_P4_photographerGoesBackground() throws {
         photographerApp.activate()

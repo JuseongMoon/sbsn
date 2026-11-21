@@ -163,6 +163,7 @@ struct PhotographerDeveloperPage: View {
     @Environment(PhotographerSession.self) private var session
     @State private var showsChatReport = false
     @State private var testPhotosLeft: Int?
+    @State private var ticketCleanup: String?
     @State private var showsChatBlock = false
 
     var body: some View {
@@ -195,6 +196,14 @@ struct PhotographerDeveloperPage: View {
                 if let testPhotosLeft {
                     Text("시험 사진 남은 파일 \(testPhotosLeft)개")
                         .accessibilityIdentifier("dev.testPhotosLeft")
+                }
+                Button("목록의 티켓 폴더 지우기(Documents/DeleteTickets.txt)", role: .destructive) {
+                    ticketCleanup = session.deleteListedTicketFolders()
+                }
+                .accessibilityIdentifier("dev.deleteListedTickets")
+                if let ticketCleanup {
+                    Text(ticketCleanup)
+                        .accessibilityIdentifier("dev.ticketCleanup")
                 }
             }
             #endif

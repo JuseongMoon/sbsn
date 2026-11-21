@@ -570,6 +570,39 @@ final class PhotographerSession {
     }
 
     #if DEBUG
+    /// 시험 정리: 맥에서 넣은 목록(`Documents/DeleteTickets.txt`, 한 줄에 티켓 폴더 이름 하나)의 폴더만 지운다.
+    /// 기기 파일은 devicectl로 지울 수 없어 앱이 지운다. 진행 중 티켓과 공개 대기 티켓은 건너뛰고, 끝나면 목록 파일도 지운다.
+    func deleteListedTicketFolders() -> String {
+        let list = URL.documentsDirectory.appending(path: "DeleteTickets.txt")
+        guard let text = try? String(contentsOf: list, encoding: .utf8) else { return "목록 파일 없음" }
+        let names = text.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        let protected = Set(galleries.keys).union([activeTicketID, ticket?.id].compactMap { $0 })
+        var deleted = 0, missing = 0, skipped = 0
+        for name in names {
+            guard !name.contains("/"), !name.hasPrefix("."), !protected.contains(name) else {
+                skipped += 1
+                continue
+            }
+            let folder = CuratedDeliveryModel.directory(for: name)
+            guard FileManager.default.fileExists(atPath: folder.path(percentEncoded: false)) else {
+                missing += 1
+                continue
+            }
+            do {
+                try FileManager.default.removeItem(at: folder)
+                deleted += 1
+            } catch {
+                skipped += 1
+            }
+        }
+        try? FileManager.default.removeItem(at: list)
+        let root = URL.applicationSupportDirectory.appending(path: "Tickets", directoryHint: .isDirectory)
+        let left = (try? FileManager.default.contentsOfDirectory(atPath: root.path(percentEncoded: false)))?.count ?? 0
+        return "목록 \(names.count)개: 지움 \(deleted), 없음 \(missing), 건너뜀 \(skipped), 남은 폴더 \(left)"
+    }
+
     /// 서버 없이 고르기 화면을 시험한다(가져오기·검사·렌더·화면 상태). 가짜 끝난 티켓이라 업로드는 실패로 끝나고, 공개 대기 목록에 저장하지 않는다.
     func openDebugGallery() {
         let now = Date()
