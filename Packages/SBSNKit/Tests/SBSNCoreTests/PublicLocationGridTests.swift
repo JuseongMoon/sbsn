@@ -83,6 +83,32 @@ struct PublicLocationGridTests {
         #expect(PublicLocationGrid.publication(latitude: 35.6812, longitude: 139.7671, uid: "artist-01", key: key) == nil)
     }
 
+    /// 묶음 수준(총괄 결정, 웹 벡터가 나오면 대조): 가로 12개 이하가 되는 가장 작은 level
+    @Test func clusterLevelFromScreenWidth() {
+        #expect(PublicLocationGrid.clusterLevel(screenWidthMm: 2_000_000) == 0)
+        #expect(PublicLocationGrid.clusterLevel(screenWidthMm: 2_400_000) == 0)
+        #expect(PublicLocationGrid.clusterLevel(screenWidthMm: 2_400_001) == 1)
+        #expect(PublicLocationGrid.clusterLevel(screenWidthMm: 5_300_000) == 2)
+        #expect(PublicLocationGrid.clusterLevel(screenWidthMm: 20_000_000) == 4)
+        #expect(PublicLocationGrid.clusterLevel(screenWidthMm: 9_000_000_000) == 10)
+    }
+
+    /// 조회 범위: 축마다 100칸(20km)을 넘으면 가운데 100칸으로 줄인다.
+    @Test func queryRectNarrowsToCenterHundredCells() {
+        let small = PublicLocationGrid.queryRect(west: 950_000_000, south: 1_950_000_000, east: 960_000_000, north: 1_960_000_000)
+        #expect(!small.narrowed && small.west == 950_000_000 && small.east == 960_000_000)
+        let wide = PublicLocationGrid.queryRect(west: 900_000_000, south: 1_950_000_000, east: 960_000_000, north: 1_960_000_000)
+        #expect(wide.narrowed)
+        #expect(wide.east - wide.west == 20_000_000 && wide.west == 920_000_000)
+        #expect(wide.south == 1_950_000_000 && wide.north == 1_960_000_000)
+        // 화면 네 모서리·변 가운데 투영: 서울 시청 둘레 약 2km 화면
+        let box = PublicLocationGrid.projectedViewport([(37.575, 126.966), (37.575, 126.990), (37.557, 126.966), (37.557, 126.990),
+                                                       (37.575, 126.978), (37.557, 126.978), (37.566, 126.966), (37.566, 126.990)])
+        let width = box.map { $0.east - $0.west } ?? 0
+        #expect(width > 2_000_000 && width < 2_200_000)
+        #expect(PublicLocationGrid.clusterLevel(screenWidthMm: width) == 0)
+    }
+
     @Test func hmacMessageEscapesLikeJSON() {
         let cell = PublicLocationGrid.Cell(x: -1, y: 0)
         #expect(PublicLocationGrid.hmacMessage(uid: "a\"b\\c/d한\n", cell: cell) == "[\"sbsn-grid-v1\",\"a\\\"b\\\\c/d한\\n\",-1,0]")

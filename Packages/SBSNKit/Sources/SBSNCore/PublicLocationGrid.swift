@@ -142,6 +142,48 @@ public enum PublicLocationGrid {
         return (a % b != 0 && (a < 0) != (b < 0)) ? q - 1 : q
     }
 
+    // MARK: - 지도 화면(묶음 수준·조회 범위)
+
+    /// 묶음 수준 상한(한 변 2^10칸 = 약 205km)
+    public static let maxClusterLevel = 10
+    /// 화면 가로에 놓일 묶음 수 상한
+    public static let maxClustersAcross: Int64 = 12
+    /// 조회 범위의 축당 칸 수 상한(findLaunchPhotographersV1 계약)
+    public static let maxQueryCellsPerAxis: Int64 = 100
+
+    /// 화면 네 모서리와 네 변 가운데(위경도)를 투영한 점들. 총괄 결정: 이 사각형으로 화면 너비와 조회 범위를 정한다.
+    public static func projectedViewport(_ points: [(latitude: Double, longitude: Double)]) -> (west: Int64, south: Int64, east: Int64, north: Int64)? {
+        let projected = points.map { project(latitude: $0.latitude, longitude: $0.longitude) }
+        guard let first = projected.first else { return nil }
+        return projected.dropFirst().reduce((first.eastMm, first.northMm, first.eastMm, first.northMm)) {
+            (min($0.0, $1.eastMm), min($0.1, $1.northMm), max($0.2, $1.eastMm), max($0.3, $1.northMm))
+        }
+    }
+
+    /// 화면 너비(동서 mm)에 한 변 `200m × 2^level` 묶음이 가로 12개 이하가 되는 가장 작은 level(0~10).
+    /// 예: 2km → 0, 5.3km → 2, 20km → 4.
+    public static func clusterLevel(screenWidthMm: Int64) -> Int {
+        for level in 0...maxClusterLevel where screenWidthMm <= maxClustersAcross * cellSizeMm * (Int64(1) << level) {
+            return level
+        }
+        return maxClusterLevel
+    }
+
+    /// 조회할 사각형(EPSG:5179 정수 mm, 닫힌 범위). 축마다 100칸을 넘으면 화면 가운데 100칸으로 줄이고 `narrowed`가 참이다
+    /// (앱은 "확대하면 더 보입니다"를 보인다).
+    public static func queryRect(west: Int64, south: Int64, east: Int64, north: Int64)
+        -> (west: Int64, south: Int64, east: Int64, north: Int64, narrowed: Bool) {
+        let limit = maxQueryCellsPerAxis * cellSizeMm
+        func clamp(_ low: Int64, _ high: Int64) -> (Int64, Int64, Bool) {
+            guard high - low > limit else { return (low, high, false) }
+            let center = low + (high - low) / 2
+            return (center - limit / 2, center - limit / 2 + limit, true)
+        }
+        let (w, e, narrowedX) = clamp(west, east)
+        let (s, n, narrowedY) = clamp(south, north)
+        return (w, s, e, n, narrowedX || narrowedY)
+    }
+
     // MARK: - 투영(EPSG:5179, Krüger 급수)
 
     /// WGS 84 → EPSG:5179 정수 mm(`floor(m × 1000 + 0.5)`)
