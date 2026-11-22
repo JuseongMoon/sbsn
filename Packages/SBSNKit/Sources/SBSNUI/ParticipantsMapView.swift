@@ -24,11 +24,36 @@ public struct ParticipantsMapView: View {
 
     let participants: [Participant]
     @State private var position = MapCameraPosition.automatic
+    /// Google 지도: 값을 올리면 두 사람이 모두 보이게 맞춘다.
+    @State private var framing = 0
 
     public init(participants: [Participant]) {
         self.participants = participants
     }
 
+    #if os(iOS) && canImport(GoogleMaps)
+    /// iOS는 Google 지도(D051·L30). 갱신 시각은 위치 시트 아래 줄이 보여 준다.
+    public var body: some View {
+        GoogleMapView(pins: participants.map {
+            MapPin(id: $0.id, title: $0.label, point: $0.point, style: $0.isMe ? .me : .photographer)
+        }, framing: framing)
+        .overlay(alignment: .bottomTrailing) {
+            Button("둘 다 보기", systemImage: "arrow.up.left.and.arrow.down.right") {
+                framing += 1
+            }
+            .labelStyle(.iconOnly)
+            .padding(8)
+            .background(.thinMaterial, in: Circle())
+            .padding(.trailing, 8)
+            .padding(.bottom, 56)
+        }
+        .onAppear { framing += 1 }
+        .onChange(of: participants.map(\.id)) { _, _ in
+            framing += 1
+        }
+    }
+    #else
+    /// 맥(`swift test` 빌드)은 MapKit으로 그린다. 앱은 iOS라 이 경로를 쓰지 않는다.
     public var body: some View {
         Map(position: $position) {
             ForEach(participants) { participant in
@@ -61,6 +86,7 @@ public struct ParticipantsMapView: View {
             position = .automatic
         }
     }
+    #endif
 }
 
 extension ParticipantsMapView.Participant {

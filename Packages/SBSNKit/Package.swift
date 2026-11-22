@@ -31,6 +31,8 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/firebase/firebase-ios-sdk", from: "13.1.1"),
+        // 출시 지도(D051·L30). 11.3부터 최소 iOS 17. 맵 ID는 쓰지 않는다.
+        .package(url: "https://github.com/googlemaps/ios-maps-sdk", .upToNextMajor(from: "11.4.0")),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
@@ -75,7 +77,11 @@ let package = Package(
         // 작가 앱과 고객 앱이 같이 쓰는 화면(매칭 지도, 채팅).
         .target(
             name: "SBSNUI",
-            dependencies: ["SBSNCore", "SBSNBackend"],
+            dependencies: [
+                "SBSNCore", "SBSNBackend",
+                // iOS 전용 바이너리. 맥 `swift test` 빌드에서는 빠진다(코드는 #if canImport(GoogleMaps)).
+                .product(name: "GoogleMaps", package: "ios-maps-sdk", condition: .when(platforms: [.iOS])),
+            ],
             swiftSettings: [
                 .enableUpcomingFeature("ApproachableConcurrency"),
             ],

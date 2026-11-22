@@ -1,4 +1,3 @@
-import MapKit
 import SBSNBackend
 import SBSNCore
 import SBSNUI
@@ -7,8 +6,8 @@ import SwiftUI
 /// 촬영 가능한 작가를 지도에서 고르고 확정하는 화면("촬영" 탭, 활성 티켓이 없을 때).
 ///
 /// 작가 카드의 "이 작가와 촬영하기"가 가격·조건 확인 자리 화면을 띄우고, 그 화면의 확정 버튼이 확정 트랜잭션을 부른다.
-/// 작가 목록 리스너는 이 화면이 떠 있는 동안만 붙고, 마커는 `Map`의 selection으로 고른다.
-/// 고객이 위치 권한을 거부해도 지도와 작가 마커는 보여야 하므로 카메라는 내 위치를 못 받으면 서울로 둔다.
+/// 작가 목록 리스너는 이 화면이 떠 있는 동안만 붙고, 마커는 Google 지도(`GoogleMapView`)의 핀을 눌러 고른다(D051·L30).
+/// 고객이 위치 권한을 거부해도 지도와 작가 마커는 보여야 하므로 처음 화면은 서울 시청 근처이고 작가가 보이면 작가들에게 맞춘다.
 struct PhotographerMapView: View {
     let myUid: String
 
@@ -16,7 +15,10 @@ struct PhotographerMapView: View {
     @State private var authorization = CustomerLocationAuthorization()
     @State private var photographers: [PhotographerPresence] = []
     @State private var selectedUid: String?
-    @State private var position = MapCameraPosition.userLocation(fallback: PhotographerMapView.seoul)
+    /// 값을 올리면 지도가 보이는 작가를 모두 담게 맞춘다(Google 지도).
+    @State private var framing = 0
+    /// 사용자가 지도를 직접 움직인 뒤에는 작가 목록이 바뀌어도 자동으로 맞추지 않는다.
+    @State private var userMovedMap = false
     @State private var hasFramedPhotographers = false
     /// `isSelectable`은 시각에 따라 달라지므로 주기적으로 갱신해 오래된 작가를 지도에서 뺀다.
     @State private var now = Date()
@@ -35,11 +37,6 @@ struct PhotographerMapView: View {
         case list
     }
 
-    static let seoul = MapCameraPosition.region(MKCoordinateRegion(
-        center: CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780),
-        latitudinalMeters: 5000, longitudinalMeters: 5000
-    ))
-
     struct ConfirmFailure {
         let message: String
         /// `alreadyMatched`일 때 서버가 알려 준 진행 중인 티켓
@@ -48,7 +45,7 @@ struct PhotographerMapView: View {
 
     private struct Marker: Identifiable {
         let presence: PhotographerPresence
-        let coordinate: CLLocationCoordinate2D
+        let point: GeoPoint
 
         var id: String { presence.uid }
     }
@@ -56,7 +53,7 @@ struct PhotographerMapView: View {
     private var markers: [Marker] {
         photographers.compactMap { presence in
             guard presence.isSelectable(at: now), !rejectedUids.contains(presence.uid), let location = presence.location else { return nil }
-            return Marker(presence: presence, coordinate: location.coordinate)
+            return Marker(presence: presence, point: location)
         }
     }
 
@@ -91,11 +88,10 @@ struct PhotographerMapView: View {
                 // 작가가 처음 보일 때, 그리고 사용자가 지도를 움직이기 전까지는 보이는 작가가 바뀔 때마다 작가들이 모두 보이게 맞춘다.
                 // 기본 위치(서울 시청)에 두면 멀리 있는 작가 마커가 화면 밖에 남는다. 앱을 다시 열면 첫 목록이 기기 캐시에서 와서
                 // 이미 떠난 작가에게 맞춰진 뒤 서버 목록의 작가가 화면 밖에 남기도 한다(둘 다 실기기에서 확인).
-                // 내 위치를 못 잡으면 처음의 `positionedByUser`도 믿을 수 없어 첫 맞춤은 따로 기억한다.
-                if !ids.isEmpty, !hasFramedPhotographers || !position.positionedByUser,
-                   let region = Self.region(covering: markers.map(\.coordinate)) {
+                // 첫 맞춤은 따로 기억한다(사용자가 움직이기 전에 맞춘 것인지).
+                if !ids.isEmpty, !hasFramedPhotographers || !userMovedMap {
                     hasFramedPhotographers = true
-                    position = .region(region)
+                    framing += 1
                 }
             }
             .sheet(item: $reviewingPhotographer) { photographer in
@@ -106,21 +102,12 @@ struct PhotographerMapView: View {
         }
     }
 
+    /// Google 지도(D051·L30, 맵 ID 없음). 핀 제목이 작가 이름이고 UI 시험은 `marker.<이름>`으로 찾는다.
     private var map: some View {
-        Map(position: $position, selection: $selectedUid) {
-            UserAnnotation()
-            ForEach(markers) { marker in
-                Annotation(marker.presence.displayName, coordinate: marker.coordinate) {
-                    markerView(isSelected: marker.id == selectedUid)
-                        .accessibilityIdentifier("marker.\(marker.presence.displayName)")
-                }
-                .tag(marker.id)
-            }
-        }
-        .mapControls {
-            MapUserLocationButton()
-            MapCompass()
-        }
+        GoogleMapView(pins: markers.map {
+            MapPin(id: $0.id, title: $0.presence.displayName, point: $0.point, style: .photographer,
+                   accessibilityIdentifier: "marker.\($0.presence.displayName)")
+        }, selection: $selectedUid, framing: framing, showsMyLocation: true, onUserMove: { userMovedMap = true })
     }
 
     private var modePicker: some View {
@@ -133,28 +120,6 @@ struct PhotographerMapView: View {
         .padding(.vertical, 8)
         .background(.bar)
         .accessibilityIdentifier("customer.findMode")
-    }
-
-    /// 좌표들을 모두 담는 영역. 한 명이면 그 주변 2km, 여럿이면 여백을 30% 둔다.
-    static func region(covering coordinates: [CLLocationCoordinate2D]) -> MKCoordinateRegion? {
-        guard let first = coordinates.first else { return nil }
-        guard coordinates.count > 1 else {
-            return MKCoordinateRegion(center: first, latitudinalMeters: 2000, longitudinalMeters: 2000)
-        }
-        let latitudes = coordinates.map(\.latitude)
-        let longitudes = coordinates.map(\.longitude)
-        let center = CLLocationCoordinate2D(latitude: (latitudes.min()! + latitudes.max()!) / 2,
-                                            longitude: (longitudes.min()! + longitudes.max()!) / 2)
-        let span = MKCoordinateSpan(latitudeDelta: max((latitudes.max()! - latitudes.min()!) * 1.3, 0.02),
-                                    longitudeDelta: max((longitudes.max()! - longitudes.min()!) * 1.3, 0.02))
-        return MKCoordinateRegion(center: center, span: span)
-    }
-
-    private func markerView(isSelected: Bool) -> some View {
-        Image(systemName: "camera.circle.fill")
-            .font(isSelected ? .largeTitle : .title)
-            .foregroundStyle(isSelected ? Color.accentColor : Color.orange)
-            .background(Circle().fill(.white).padding(2))
     }
 
     // MARK: - 하단 패널
