@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SBSNCore
 
 /// 알림을 눌렀을 때 열 화면. 앱 델리게이트가 값을 넣고 뿌리 화면(`ContentView`)이 가져간다.
 ///
@@ -11,8 +12,14 @@ final class CustomerNotificationRouter {
     static let shared = CustomerNotificationRouter()
 
     var pendingGalleryTicketID: String?
+    /// 출시 알림을 눌렀을 때 갈 곳(대화방·티켓)
+    var pendingLaunchDestination: LaunchNotification.Destination?
 
     func openGallery(_ ticketID: String) {
         pendingGalleryTicketID = ticketID
+    }
+
+    func open(_ destination: LaunchNotification.Destination) {
+        pendingLaunchDestination = destination
     }
 }

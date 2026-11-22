@@ -181,6 +181,27 @@ final class LaunchMatchServiceTests: XCTestCase {
         print("SBSN 작가 쪽 통과: 방 \(roomId.prefix(6)) 티켓 \(ticketId.prefix(6))·\(mutualTicket.prefix(6))")
     }
 
+    /// 출시 알림 설치 등록(W1): 연결 계정·프로필이면 등록, 해제하면 지워진다. 승인 전 작가는 받지 않는다.
+    func test_pushInstallation() async throws {
+        let customer = try await rest.createAccount(prefix: "customer")
+        _ = try await AccountService.signInForTesting(email: customer.email, password: customer.password)
+        _ = try await AccountService.saveProfile(age14Confirmed: true, nickname: "고객1")
+        try await LaunchPush.register(role: .customer, fcmToken: "test-fcm-token-\(Self.newId())")
+        let rows = try await rest.query(collection: "launchPushInstallations", field: "uid", equals: customer.uid)
+        XCTAssertEqual(rows.count, 1, "설치 등록 문서가 없음")
+        XCTAssertEqual(rows.first?["appRole"], "customer")
+        await LaunchPush.unregister(role: .customer)
+        let after = try await rest.query(collection: "launchPushInstallations", field: "uid", equals: customer.uid)
+        XCTAssertTrue(after.isEmpty, "해제 뒤에도 남음")
+
+        // 승인 전 작가 역할로는 등록되지 않는다.
+        do {
+            try await LaunchPush.register(role: .photographer, fcmToken: "test-fcm-token-x")
+            XCTFail("승인 전 작가 등록이 받아들여짐")
+        } catch {}
+        print("SBSN 알림 설치 등록·해제 통과")
+    }
+
     // MARK: - 도우미
 
     static func newId() -> String { UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased() }
@@ -266,6 +287,31 @@ struct LaunchREST {
         ])
         guard status == 200 else { throw Failure.badResponse(status, "availability \(body)") }
         return Artist(uid: account.uid, token: token)
+    }
+
+    /// 한 필드 같음 조건으로 문서를 찾는다(관리자). 문자열 필드만 돌려준다.
+    func query(collection: String, field: String, equals value: String) async throws -> [[String: String]] {
+        let (status, body) = try await requestArray("http://\(host):18080/v1/projects/\(project)/databases/(default)/documents:runQuery",
+                                                    bearer: "owner", body: ["structuredQuery": [
+                                                        "from": [["collectionId": collection]],
+                                                        "where": ["fieldFilter": ["field": ["fieldPath": field], "op": "EQUAL",
+                                                                                  "value": ["stringValue": value]]],
+                                                    ]])
+        guard status == 200 else { throw Failure.badResponse(status, "runQuery") }
+        return body.compactMap { row in
+            guard let fields = (row["document"] as? [String: Any])?["fields"] as? [String: [String: Any]] else { return nil }
+            return fields.compactMapValues { $0["stringValue"] as? String }
+        }
+    }
+
+    private func requestArray(_ url: String, bearer: String, body: Any) async throws -> (Int, [[String: Any]]) {
+        var request = URLRequest(url: URL(string: url)!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        return ((response as? HTTPURLResponse)?.statusCode ?? 0, (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] ?? [])
     }
 
     /// callable을 HTTP로 부른다. 결과의 `result`(실패면 `error`)를 돌려준다.

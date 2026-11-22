@@ -3,6 +3,7 @@ import Foundation
 import Network
 import Observation
 import SBSNBackend
+import SBSNCore
 import UIKit
 
 /// 고객 앱의 로그인 상태와 활성 티켓. 앱에 하나만 두고 화면은 환경으로 받는다.
@@ -115,6 +116,8 @@ final class CustomerSession {
         dismissedTicketId = nil
         serverTicketId = nil
         uid = nil
+        // 이 설치의 출시 알림을 이 계정에서 뗀다(로그아웃 뒤에는 이 계정으로 부를 수 없다).
+        await LaunchPush.unregister(role: .customer)
         do {
             try await Backend.signOut()
             Self.log.info("로그아웃함")

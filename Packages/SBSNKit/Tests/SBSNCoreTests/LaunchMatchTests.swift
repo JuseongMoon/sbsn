@@ -142,3 +142,22 @@ struct LaunchTimeTests {
         #expect(LaunchTime.clock(Date(timeIntervalSince1970: 1_795_669_800 - 14 * 3600)) == "00:10")
     }
 }
+
+/// 출시 알림 → 누르면 갈 곳(계약: 채팅·신청은 대화방, 촬영·연장은 티켓)
+struct LaunchNotificationTests {
+    @Test func destinations() throws {
+        func make(_ event: String, ticket: String? = nil) -> LaunchNotification? {
+            var info: [AnyHashable: Any] = ["event": event, "eventId": "e1", "roomId": "room1", "requestId": "r1"]
+            if let ticket { info["ticketId"] = ticket }
+            return LaunchNotification(userInfo: info)
+        }
+        #expect(make("chat_message")?.destination == .room("room1"))
+        #expect(make("match_requested")?.destination == .room("room1"))
+        #expect(make("match_requested")?.isTimeSensitive == true)
+        #expect(make("match_declined")?.destination == .room("room1"))
+        #expect(make("match_accepted", ticket: "t1")?.destination == .ticket(ticketId: "t1", roomId: "room1"))
+        #expect(make("extension_requested", ticket: "t1")?.destination == .ticket(ticketId: "t1", roomId: "room1"))
+        #expect(make("shoot_ended")?.destination == .room("room1"), "티켓 ID가 없으면 대화방")
+        #expect(LaunchNotification(userInfo: ["type": "message", "ticketId": "x"]) == nil, "MVP 알림은 출시 알림이 아니다")
+    }
+}

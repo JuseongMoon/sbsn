@@ -50,6 +50,7 @@ struct ContentView: View {
             let session = session
             launch.latestLocation = { session.location.latest }
             launch.start(uid: session.account?.isLinked == true ? session.uid : nil)
+            await LaunchPush.registerIfLinked(role: .photographer)
         }
     }
 
@@ -71,6 +72,18 @@ struct ContentView: View {
         }
         .onChange(of: launch.activeTicket?.id) { _, ticketId in
             if ticketId != nil { selectedTab = .shoot }
+        }
+        // 출시 알림을 누르면: 대화방은 채팅 탭에서 그 방, 진행 중 티켓은 촬영 탭(끝났으면 그 대화방)
+        .onChange(of: session.pendingLaunchDestination, initial: true) { _, destination in
+            guard let destination else { return }
+            session.pendingLaunchDestination = nil
+            switch destination {
+            case .ticket(let ticketId, _) where launch.activeTicket?.id == ticketId:
+                selectedTab = .shoot
+            case .ticket(_, let roomId), .room(let roomId):
+                launch.chatPath = [roomId]
+                selectedTab = .chat
+            }
         }
         .onChange(of: launch.requestedTab) { _, tab in
             guard let tab else { return }

@@ -63,6 +63,7 @@ struct ContentView: View {
         // 출시 대화·신청·티켓은 연결된 계정만 듣는다(규칙). 익명 → 연결은 uid가 같아 계정 판수로 다시 본다.
         .task(id: "\(session.uid ?? "-")#\(session.accountRevision)") {
             launch.start(uid: AccountService.current?.isLinked == true ? session.uid : nil)
+            await LaunchPush.registerIfLinked(role: .customer)
         }
         .task(id: session.uid) {
             if let uid = session.uid { await galleries.start(uid: uid) }
@@ -114,6 +115,18 @@ struct ContentView: View {
         .onChange(of: launch.activeTicket?.id) { _, ticketId in
             if ticketId != nil {
                 selectedTab = .shoot
+            }
+        }
+        // 출시 알림을 누르면: 대화방은 채팅 탭에서 그 방, 진행 중 티켓은 촬영 탭(끝났으면 그 대화방)
+        .onChange(of: router.pendingLaunchDestination, initial: true) { _, destination in
+            guard let destination else { return }
+            router.pendingLaunchDestination = nil
+            switch destination {
+            case .ticket(let ticketId, _) where launch.activeTicket?.id == ticketId:
+                selectedTab = .shoot
+            case .ticket(_, let roomId), .room(let roomId):
+                launch.chatPath = [roomId]
+                selectedTab = .chat
             }
         }
         .onChange(of: launch.requestedTab) { _, tab in

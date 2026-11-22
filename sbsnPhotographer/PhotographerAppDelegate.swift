@@ -4,6 +4,7 @@
 //
 
 import SBSNBackend
+import SBSNCore
 import UIKit
 import UserNotifications
 
@@ -22,6 +23,11 @@ final class PhotographerAppDelegate: NSObject, UIApplicationDelegate, UNUserNoti
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        Task { @MainActor in
+            // 출시 알림(W1): 연결·승인된 작가 계정이면 이 설치를 등록한다.
+            LaunchPush.setAPNsToken(deviceToken)
+            await LaunchPush.registerIfLinked(role: .photographer)
+        }
         Task {
             do {
                 try await PhotographerPush.register(apnsToken: deviceToken)
@@ -52,6 +58,11 @@ final class PhotographerAppDelegate: NSObject, UIApplicationDelegate, UNUserNoti
     /// 배너를 탭하면 그 티켓 화면으로 간다(구매 알림·공개 지연 알림은 그 촬영의 갤러리).
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         let userInfo = response.notification.request.content.userInfo
+        // 출시 알림: 채팅·신청은 대화방(신청 카드), 촬영·연장은 티켓(설계 2.7)
+        if let launch = LaunchNotification(userInfo: userInfo) {
+            await MainActor.run { PhotographerSession.shared.pendingLaunchDestination = launch.destination }
+            return
+        }
         if case .purchase(let purchase)? = PhotographerPush.notification(from: userInfo) {
             PhotographerSession.shared.openTicket(purchase.ticketID, photoID: purchase.photoID)
         } else if let ticketID = userInfo["ticketId"] as? String {

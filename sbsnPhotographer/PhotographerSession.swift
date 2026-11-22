@@ -55,6 +55,8 @@ final class PhotographerSession {
     let launchPublisher = LaunchPresencePublisher()
     /// 지금 로그인한 계정. 익명이면 로그인 화면을 보인다(작가는 처음부터 로그인, D051·D063).
     private(set) var account: AccountService.Account?
+    /// 출시 알림을 눌렀을 때 갈 곳(뿌리 화면이 가져간다)
+    var pendingLaunchDestination: LaunchNotification.Destination?
     /// 계정 삭제 뒤 한 번 보이는 알림(로그인 관문 위에 띄운다. 다음 실행 때 다시 알리지 않는다)
     var accountNotice: String?
 
@@ -409,6 +411,8 @@ final class PhotographerSession {
                 UserDefaults.standard.set(data, forKey: Self.lastSettingsKey)
             }
             launchPublisher.turnOn(uid: uid, settings: settings)
+            // 승인 전에는 서버가 등록을 받지 않으므로 켤 때 다시 등록한다.
+            Task { await LaunchPush.registerIfLinked(role: .photographer) }
         } else {
             isAvailable = false
             UserDefaults.standard.set(false, forKey: Self.availableKey)
@@ -571,8 +575,9 @@ final class PhotographerSession {
     /// 출시 계정의 로그아웃·계정 삭제 뒤 새 익명 계정으로 바꾼다(로그인 화면이 다시 뜬다).
     /// 출시 로그인 시험(`LaunchAuthProbeSection`)의 로그아웃도 쓴다.
     func resetAnonymousAccount() async {
-        // 공개 위치를 먼저 끈다(로그아웃 뒤에는 이 계정으로 끄기를 보낼 수 없다, 격자 규격).
+        // 공개 위치를 먼저 끈다(로그아웃 뒤에는 이 계정으로 끄기를 보낼 수 없다, 격자 규격). 출시 알림 설치도 뗀다.
         await launchPublisher.turnOff(uid: uid)
+        await LaunchPush.unregister(role: .photographer)
         ticketTask?.cancel()
         ticket = nil
         isAvailable = false

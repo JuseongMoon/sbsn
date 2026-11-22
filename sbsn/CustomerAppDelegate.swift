@@ -4,6 +4,7 @@
 //
 
 import SBSNBackend
+import SBSNCore
 import UIKit
 import UserNotifications
 
@@ -21,6 +22,11 @@ final class CustomerAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        Task { @MainActor in
+            // 출시 알림(W1): 연결된 계정이면 이 설치를 등록한다(로그인할 때도 다시 부른다).
+            LaunchPush.setAPNsToken(deviceToken)
+            await LaunchPush.registerIfLinked(role: .customer)
+        }
         Task {
             do {
                 try await CustomerPush.register(apnsToken: deviceToken)
@@ -38,6 +44,9 @@ final class CustomerAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
     /// 시작·취소·종료는 화면이 이미 바뀌므로 알림 목록에만 남긴다. 갤러리 공개는 다른 탭에 있을 수 있어 배너로 띄운다.
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        if LaunchNotification(userInfo: notification.request.content.userInfo) != nil {
+            return [.banner, .list, .sound]
+        }
         let push = CustomerPush.notification(from: notification.request.content.userInfo)
         switch push {
         case .message: return [.banner, .list, .sound]
@@ -48,6 +57,11 @@ final class CustomerAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
 
     /// 배너를 누르면: 갤러리 공개는 그 갤러리로 간다. 나머지는 앱만 열린다(진행 중 티켓 화면이 그대로 보인다).
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        // 출시 알림: 채팅·신청은 대화방, 촬영·연장은 티켓(설계 2.7)
+        if let launch = LaunchNotification(userInfo: response.notification.request.content.userInfo) {
+            await CustomerNotificationRouter.shared.open(launch.destination)
+            return
+        }
         guard let push = CustomerPush.notification(from: response.notification.request.content.userInfo), push.isGalleryPublished
         else { return }
         await CustomerNotificationRouter.shared.openGallery(push.ticketID)

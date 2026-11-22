@@ -243,6 +243,48 @@ final class LaunchMatchUITests: XCTestCase {
         }
     }
 
+    /// 출시 알림을 누르면 그 대화방으로 간다(설계 2.7). 알림은 셸이 `xcrun simctl push`로 보낸다:
+    /// 이 시험이 "SBSN PUSH READY <roomId>"를 찍으면 그 방의 chat_message를 보낸다(scratchpad 실행 스크립트).
+    func test_L10_notificationOpensRoom() async throws {
+        let artist = try await admin.createTestAccount(prefix: "artist")
+        let artistToken = try await admin.idToken(email: artist.email, password: artist.password)
+        _ = try await admin.call("saveLaunchProfileV1", idToken: artistToken, data: ["age14Confirmed": true, "nickname": "작가1"])
+        try await admin.setDocument("launchArtistRoles/\(artist.uid)", fields: ["approved": ["booleanValue": true]])
+        let customer = try await admin.createTestAccount(prefix: "customer")
+        let app = customerApp
+        app.launchArguments = ["-SBSNEmulatorHost", host]
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["마이"].waitForExistence(timeout: 30))
+        app.tabBars.buttons["마이"].tap()
+        if app.buttons["my.signOut"].waitForExistence(timeout: 5) { app.buttons["my.signOut"].tap() }
+        XCTAssertTrue(app.buttons["my.signIn"].waitForExistence(timeout: 20))
+        app.buttons["my.signIn"].tap()
+        try signIn(at: app, gate: false, account: customer)
+        XCTAssertTrue(app.descendants(matching: .any)["my.nickname"].waitForExistence(timeout: 30))
+        let customerToken = try await admin.idToken(email: customer.email, password: customer.password)
+        let (_, opened) = try await admin.call("openLaunchConversationV1", idToken: customerToken, data: ["artistUid": artist.uid])
+        let roomId = try XCTUnwrap((opened["result"] as? [String: Any])?["roomId"] as? String)
+
+        // 대화방을 한 번 열어 알림 권한을 허용한다.
+        app.tabBars.buttons["채팅"].tap()
+        let row = app.buttons["chat.row"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 20), "채팅 목록에 방이 없음")
+        row.tap()
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        if springboard.buttons["허용"].waitForExistence(timeout: 5) { springboard.buttons["허용"].tap() }
+        app.navigationBars.buttons.firstMatch.tap()
+        app.tabBars.buttons["촬영"].tap()
+
+        print("SBSN PUSH READY \(roomId)")
+        let banner = springboard.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "새 메시지가 왔어요")).firstMatch
+        XCTAssertTrue(banner.waitForExistence(timeout: 90), "알림 배너가 오지 않음")
+        banner.tap()
+        let input = app.textViews["chat.input"].exists ? app.textViews["chat.input"] : app.textFields["chat.input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 15), "알림을 눌러도 대화방이 열리지 않음")
+        XCTAssertTrue(app.tabBars.buttons["채팅"].isSelected, "채팅 탭이 아님")
+        attachScreenshot("L10 알림으로 연 대화방", app: app)
+    }
+
     // MARK: - 도우미
 
     private func waitUntil(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {

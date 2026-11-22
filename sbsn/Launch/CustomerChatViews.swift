@@ -119,6 +119,8 @@ struct CustomerChatRoomScreen: View {
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        // 작가 메시지·신청 결과·촬영 상태를 알 수 있게 대화방을 처음 열 때 알림 권한을 묻는다.
+        .task { await CustomerAppDelegate.requestAuthorizationIfNeeded() }
         .task(id: roomId) {
             do {
                 for try await value in LaunchMatchService.room(roomId: roomId) { roomInfo = value }
