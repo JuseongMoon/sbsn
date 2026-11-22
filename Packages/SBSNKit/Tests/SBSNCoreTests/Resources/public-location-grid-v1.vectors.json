@@ -200,5 +200,91 @@
     {"visibleWidthMm": 1228800000, "level": 9},
     {"visibleWidthMm": 1228800001, "level": 10},
     {"visibleWidthMm": 2457600001, "level": 10}
+  ],
+  "queryRectVectors": [
+    {
+      "name": "under-limit",
+      "center": {"eastMm": 1000000000, "northMm": 2000000000},
+      "viewport": {"westMm": 995000000, "southMm": 1995000000, "eastMm": 1005000000, "northMm": 2005000000},
+      "query": {"westMm": 995000000, "southMm": 1995000000, "eastMm": 1005000000, "northMm": 2005000000},
+      "narrowed": false
+    },
+    {
+      "name": "exactly-100-cells",
+      "center": {"eastMm": 1010000000, "northMm": 2000100000},
+      "viewport": {"westMm": 1000000000, "southMm": 2000000000, "eastMm": 1019999999, "northMm": 2000200000},
+      "query": {"westMm": 1000000000, "southMm": 2000000000, "eastMm": 1019999999, "northMm": 2000200000},
+      "narrowed": false
+    },
+    {
+      "name": "exactly-101-cells",
+      "center": {"eastMm": 1010000000, "northMm": 2000100000},
+      "viewport": {"westMm": 1000000000, "southMm": 2000000000, "eastMm": 1020000000, "northMm": 2000200000},
+      "query": {"westMm": 1000000000, "southMm": 2000000000, "eastMm": 1019999999, "northMm": 2000200000},
+      "narrowed": true
+    },
+    {
+      "name": "east-only-over-limit",
+      "center": {"eastMm": 1000090000, "northMm": 2000100000},
+      "viewport": {"westMm": 980000100, "southMm": 1995000000, "eastMm": 1020000000, "northMm": 2005000000},
+      "query": {"westMm": 990000000, "southMm": 1995000000, "eastMm": 1009999999, "northMm": 2005000000},
+      "narrowed": true
+    },
+    {
+      "name": "north-only-over-limit",
+      "center": {"eastMm": 1000100000, "northMm": 2000550000},
+      "viewport": {"westMm": 998900000, "southMm": 1980000000, "eastMm": 1001300000, "northMm": 2020000000},
+      "query": {"westMm": 998900000, "southMm": 1990400000, "eastMm": 1001300000, "northMm": 2010399999},
+      "narrowed": true
+    },
+    {
+      "name": "both-axes-over-limit",
+      "center": {"eastMm": 1004080000, "northMm": 2008070000},
+      "viewport": {"westMm": 980000000, "southMm": 1980000000, "eastMm": 1030000000, "northMm": 2040000000},
+      "query": {"westMm": 994000000, "southMm": 1998000000, "eastMm": 1013999999, "northMm": 2017999999},
+      "narrowed": true
+    },
+    {
+      "name": "center-at-cell-boundary",
+      "center": {"eastMm": 1000200000, "northMm": 2000000000},
+      "viewport": {"westMm": 980000000, "southMm": 1998000000, "eastMm": 1020000000, "northMm": 2002000000},
+      "query": {"westMm": 990200000, "southMm": 1998000000, "eastMm": 1010199999, "northMm": 2002000000},
+      "narrowed": true
+    },
+    {
+      "name": "negative-cell-off-midpoint",
+      "center": {"eastMm": 999799999, "northMm": 1999799999},
+      "viewport": {"westMm": 969999999, "southMm": 1970000000, "eastMm": 1020000000, "northMm": 2020000000},
+      "query": {"westMm": 989600000, "southMm": 1989600000, "eastMm": 1009599999, "northMm": 2009599999},
+      "narrowed": true
+    },
+    {
+      "name": "narrow-before-service-west-edge",
+      "center": {"eastMm": 703000000, "northMm": 2000000000},
+      "viewport": {"westMm": 680000000, "southMm": 1995000000, "eastMm": 723000000, "northMm": 2005000000},
+      "query": {"westMm": 700000000, "southMm": 1995000000, "eastMm": 712999999, "northMm": 2005000000},
+      "narrowed": true
+    },
+    {
+      "name": "narrow-before-service-north-edge",
+      "center": {"eastMm": 1000000000, "northMm": 2197000000},
+      "viewport": {"westMm": 995000000, "southMm": 2177000000, "eastMm": 1005000000, "northMm": 2220000000},
+      "query": {"westMm": 995000000, "southMm": 2187000000, "eastMm": 1005000000, "northMm": 2199999999},
+      "narrowed": true
+    },
+    {
+      "name": "service-edge-without-100-cell-narrowing",
+      "center": {"eastMm": 700100000, "northMm": 2000000000},
+      "viewport": {"westMm": 699900000, "southMm": 1999800000, "eastMm": 700300000, "northMm": 2000200000},
+      "query": {"westMm": 700000000, "southMm": 1999800000, "eastMm": 700300000, "northMm": 2000200000},
+      "narrowed": false
+    },
+    {
+      "name": "entirely-outside-service",
+      "center": {"eastMm": 695000000, "northMm": 2000000000},
+      "viewport": {"westMm": 694000000, "southMm": 1999800000, "eastMm": 696000000, "northMm": 2000200000},
+      "query": null,
+      "narrowed": false
+    }
   ]
 }

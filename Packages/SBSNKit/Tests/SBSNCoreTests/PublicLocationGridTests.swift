@@ -11,6 +11,17 @@ struct PublicLocationGridTests {
         let vectors: [Vector]
         /// 화면 너비(조회 범위를 자르기 전 여덟 점의 동서 폭, mm) → 묶음 수준(웹 0460041)
         let clusterLevelVectors: [ClusterLevelVector]
+        /// 카메라 중심 + 자르기 전 화면 경계 → 서버 조회 범위(서비스 밖이면 null)·잘림 여부(웹 0a07a20)
+        let queryRectVectors: [QueryRectVector]
+    }
+
+    struct QueryRectVector: Decodable {
+        struct Rect: Decodable, Equatable { let westMm: Int64; let southMm: Int64; let eastMm: Int64; let northMm: Int64 }
+        let name: String
+        let center: Vector.MM
+        let viewport: Rect
+        let query: Rect?
+        let narrowed: Bool
     }
 
     struct ClusterLevelVector: Decodable {
@@ -51,6 +62,20 @@ struct PublicLocationGridTests {
         #expect(Self.vectors.version == 1 && Self.vectors.epsg == 5179)
         #expect(Self.vectors.vectors.count == 9)
         #expect(Self.vectors.clusterLevelVectors.count == 13)
+        #expect(Self.vectors.queryRectVectors.count == 12)
+    }
+
+    /// 조회 범위 공통 벡터 12개(정확히 일치). 범위가 비면(서비스 밖) 조회하지 않는다.
+    @Test(arguments: vectors.queryRectVectors.map(\.name))
+    func queryRectMatchesVector(_ name: String) throws {
+        let vector = try #require(Self.vectors.queryRectVectors.first { $0.name == name })
+        let v = vector.viewport
+        let rect = PublicLocationGrid.queryRect(west: v.westMm, south: v.southMm, east: v.eastMm, north: v.northMm,
+                                                center: .init(eastMm: vector.center.eastMm, northMm: vector.center.northMm))
+        let query = rect.west <= rect.east && rect.south <= rect.north
+            ? QueryRectVector.Rect(westMm: rect.west, southMm: rect.south, eastMm: rect.east, northMm: rect.north) : nil
+        #expect(query == vector.query, "\(name) 범위")
+        #expect(rect.narrowed == vector.narrowed, "\(name) 잘림")
     }
 
     /// 묶음 수준 공통 벡터 13개(정확히 일치)

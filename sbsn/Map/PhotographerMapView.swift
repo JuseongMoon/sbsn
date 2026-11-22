@@ -165,7 +165,8 @@ struct PhotographerMapView: View {
         let center = PublicLocationGrid.project(latitude: viewport.center.latitude, longitude: viewport.center.longitude)
         let rect = PublicLocationGrid.queryRect(west: box.west, south: box.south, east: box.east, north: box.north, center: center)
         guard rect.west <= rect.east, rect.south <= rect.north else {
-            launchMap = LaunchMapState(clusters: [], truncated: false, narrowed: rect.narrowed)
+            // 서비스 범위 밖: 조회하지 않고 "확대하면 더 보입니다"도 띄우지 않는다(규격: 조회가 있고 잘렸을 때만)
+            launchMap = LaunchMapState(clusters: [], truncated: false, narrowed: false)
             return
         }
         do {
