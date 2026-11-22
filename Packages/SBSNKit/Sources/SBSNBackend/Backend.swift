@@ -1,13 +1,62 @@
 import FirebaseAuth
 import FirebaseCore
+import FirebaseFirestore
+import FirebaseFunctions
+import FirebaseStorage
+import Foundation
 
 /// 서버(Firebase) 연결 진입점. 앱은 Firebase 타입 대신 이 모듈의 타입만 쓴다.
 public enum Backend {
+    /// 앱 개발용 로컬 에뮬레이터(웹 저장소 `firebase/scripts/start_dev_emulators.sh`). 디버그 빌드에서 실행 인자
+    /// `-SBSNEmulatorHost <주소>`를 줄 때만 쓴다(시뮬레이터 127.0.0.1, 실기기는 맥 LAN 주소 — 주소는 커밋하지 않는다).
+    /// sbsn-dev의 MVP 흐름과 섞이지 않게 프로젝트 ID를 에뮬레이터 전용 demo 프로젝트로 바꾼다.
+    public struct Emulator: Sendable, Equatable {
+        public static let projectID = "demo-sbsn-functions"
+        public static let storageBucket = "demo-sbsn-functions.appspot.com"
+        public static let authPort = 19099
+        public static let firestorePort = 18080
+        public static let functionsPort = 15001
+        public static let storagePort = 19199
+
+        public let host: String
+    }
+
+    /// 지금 쓰는 에뮬레이터. nil이면 GoogleService-Info.plist의 실제 프로젝트(sbsn-dev)에 붙는다.
+    nonisolated(unsafe) public private(set) static var emulator: Emulator?
+
     /// 앱 시작 시 한 번 호출한다. 앱 번들에 GoogleService-Info.plist가 있어야 한다.
     @MainActor
     public static func configure() {
         guard FirebaseApp.app() == nil else { return }
+        #if DEBUG
+        if let host = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)["SBSNEmulatorHost"] as? String,
+           !host.isEmpty, let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
+           let options = FirebaseOptions(contentsOfFile: path) {
+            options.projectID = Emulator.projectID
+            options.storageBucket = Emulator.storageBucket
+            FirebaseApp.configure(options: options)
+            let emulator = Emulator(host: host)
+            Auth.auth().useEmulator(withHost: host, port: Emulator.authPort)
+            let settings = Firestore.firestore().settings
+            settings.host = "\(host):\(Emulator.firestorePort)"
+            settings.isSSLEnabled = false
+            settings.cacheSettings = MemoryCacheSettings()
+            Firestore.firestore().settings = settings
+            Storage.storage().useEmulator(withHost: host, port: Emulator.storagePort)
+            self.emulator = emulator
+            return
+        }
+        #endif
         FirebaseApp.configure()
+    }
+
+    /// 호출형 함수 인스턴스. 에뮬레이터를 쓰면 로컬 함수로 보낸다.
+    static func functions(region: String) -> Functions {
+        let functions = Functions.functions(region: region)
+        if let emulator {
+            functions.useEmulator(withHost: emulator.host, port: Emulator.functionsPort)
+        }
+        return functions
     }
 
     /// 로그인한 사용자 ID. 아직 로그인하지 않았으면 익명으로 로그인한다.

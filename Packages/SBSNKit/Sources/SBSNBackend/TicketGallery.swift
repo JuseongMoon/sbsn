@@ -43,7 +43,7 @@ public enum TicketGallery {
     }
 
     public static func publish(ticketId: String, photoIds: [String]) async throws -> Published {
-        let callable = Functions.functions(region: region).httpsCallable("publishGallery")
+        let callable = Backend.functions(region: region).httpsCallable("publishGallery")
         let result: HTTPSCallableResult
         do {
             result = try await callable.call(["ticketId": ticketId, "photoIds": photoIds])
