@@ -3,6 +3,7 @@ import Foundation
 import Network
 import Observation
 import SBSNBackend
+import UIKit
 
 /// 고객 앱의 로그인 상태와 활성 티켓. 앱에 하나만 두고 화면은 환경으로 받는다.
 ///
@@ -36,6 +37,7 @@ final class CustomerSession {
     private var dismissedTicketId: String?
     private var lockTask: Task<Void, Never>?
     private let pathMonitor = NWPathMonitor()
+    @ObservationIgnored private var activeObserver: (any NSObjectProtocol)?
 
     var activeTicketId: String? {
         if let serverTicketId, serverTicketId != dismissedTicketId {
@@ -50,6 +52,24 @@ final class CustomerSession {
             Task { @MainActor in self?.isOnline = isOnline }
         }
         pathMonitor.start(queue: DispatchQueue(label: "sbsn.customer.network-path"))
+        // 앱이 앞으로 올 때 저장된 로그인이 서버에서 무효가 됐는지 본다(다른 기기·웹에서 계정 삭제 등).
+        activeObserver = NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification,
+                                                                object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                Task { await self.revalidateAccount() }
+            }
+        }
+    }
+
+    /// 저장된 로그인이 서버에서 무효면(지워짐·막힘·갱신 토큰 폐기) 새 익명 계정으로 둘러보기를 이어 간다(총괄 공통 기준).
+    /// 앱 시작 때의 확인은 `Backend.signedInUserID()`가 한다.
+    private func revalidateAccount() async {
+        guard phase == .ready, uid != nil else { return }
+        guard !(await Backend.validateSession()) else { return }
+        Self.log.notice("저장된 로그인이 무효라 새 익명 계정으로 바꿈")
+        UserDefaults.standard.removeObject(forKey: "SBSNLaunchNickname")
+        await reissueAccount(reportsInDebug: false)
     }
 
     /// 앱이 뜰 때 한 번. 로그인 실패 화면의 "다시 시도"도 이걸 부른다.
@@ -85,7 +105,7 @@ final class CustomerSession {
     /// 익명 계정을 버리고 새로 만든다. 시험에서 "새 고객"이 필요할 때만 쓴다.
     static let log = Logger(subsystem: "com.ScienceFiction.sbsn", category: "account")
 
-    func reissueAccount() async {
+    func reissueAccount(reportsInDebug: Bool = true) async {
         Self.log.info("계정 다시 만들기 시작(현재 \(AccountService.current?.isAnonymous == true ? "익명" : "연결", privacy: .public))")
         lockTask?.cancel()
         lockTask = nil
@@ -103,7 +123,7 @@ final class CustomerSession {
             return
         }
         await signIn()
-        if let uid {
+        if reportsInDebug, let uid {
             debugMessage = "새 익명 계정: \(uid)"
         }
     }

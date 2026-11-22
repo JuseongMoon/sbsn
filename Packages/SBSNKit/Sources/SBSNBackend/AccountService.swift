@@ -90,13 +90,18 @@ public enum AccountService {
     // MARK: - 공통
 
     /// 익명이면 연결하고, 자격 증명이 이미 다른 계정에 연결돼 있으면 그 계정으로 로그인한다(익명 계정은 버린다).
+    /// 저장된 익명 계정이 서버에서 무효면(지워짐·막힘·갱신 토큰 폐기) 버리고 그 자격 증명으로 바로 로그인한다(총괄 공통 기준).
     static func linkOrSignIn(_ credential: AuthCredential) async throws -> Account {
+        _ = await Backend.validateSession()
         if let user = Auth.auth().currentUser, user.isAnonymous {
             do {
                 try await user.link(with: credential)
             } catch let error as NSError where error.code == AuthErrorCode.credentialAlreadyInUse.rawValue {
                 let updated = error.userInfo[AuthErrorUserInfoUpdatedCredentialKey] as? AuthCredential ?? credential
                 try await Auth.auth().signIn(with: updated)
+            } catch where Backend.isDeadSession(error) {
+                try? Auth.auth().signOut()
+                try await Auth.auth().signIn(with: credential)
             }
         } else {
             try await Auth.auth().signIn(with: credential)

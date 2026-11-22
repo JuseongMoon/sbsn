@@ -130,6 +130,47 @@ final class LaunchArtistUITests: XCTestCase {
         try await expectDeletionCompleted(uid: account.uid)
     }
 
+    /// 저장된 로그인이 서버에서 무효가 되면(다른 기기·웹에서 삭제 등) 오류 없이 새 익명 상태로 간다(총괄 공통 기준, Android 9100316).
+    /// 작가 앱은 다시 열 때(시작 확인), 고객 앱은 앞으로 돌아올 때(1분에 한 번 확인) 본다.
+    func test_L7_deadSessionFallsBackToAnonymous() async throws {
+        // 작가: 로그인한 채 앱을 끄고 서버에서 계정을 지운 뒤 다시 열면 로그인 관문이다.
+        let artist = try await admin.createTestAccount(prefix: "artist")
+        photographerApp.launchArguments = ["-SBSNEmulatorHost", host]
+        photographerApp.launch()
+        try signInAtGate(photographerApp, account: artist)
+        photographerApp.terminate()
+        try await admin.deleteUser(uid: artist.uid)
+        photographerApp.launch()
+        XCTAssertTrue(photographerApp.switches["signIn.age14"].waitForExistence(timeout: 30), "무효 로그인 뒤 로그인 관문이 아님")
+        XCTAssertFalse(photographerApp.staticTexts["signIn.error"].exists, "로그인 관문에 오류가 보임")
+        attachScreenshot("L7 작가 다시 열기", app: photographerApp)
+
+        // 고객: 로그인한 채 홈으로 나갔다가 서버에서 계정이 지워진 뒤 돌아오면 익명 둘러보기다.
+        let customer = try await admin.createTestAccount(prefix: "customer")
+        let app = customerApp
+        app.launchArguments = ["-SBSNEmulatorHost", host]
+        app.launch()
+        let launchedAt = Date()
+        XCTAssertTrue(app.tabBars.buttons["마이"].waitForExistence(timeout: 30))
+        app.tabBars.buttons["마이"].tap()
+        if app.buttons["my.signOut"].waitForExistence(timeout: 5) {
+            app.buttons["my.signOut"].tap()
+        }
+        XCTAssertTrue(app.buttons["my.signIn"].waitForExistence(timeout: 20))
+        app.buttons["my.signIn"].tap()
+        try fillSignIn(app, account: customer)
+        XCTAssertTrue(app.descendants(matching: .any)["my.nickname"].waitForExistence(timeout: 30), "로그인 뒤 닉네임이 없음")
+        XCUIDevice.shared.press(.home)
+        try await admin.deleteUser(uid: customer.uid)
+        // 서버 확인은 1분에 한 번까지라 시작 확인에서 1분이 지난 뒤 돌아온다.
+        let wait = 65 - Date().timeIntervalSince(launchedAt)
+        if wait > 0 { try await Task.sleep(for: .seconds(wait)) }
+        app.activate()
+        XCTAssertTrue(app.buttons["my.signIn"].waitForExistence(timeout: 30), "무효 로그인 뒤 익명 둘러보기가 아님")
+        XCTAssertFalse(app.descendants(matching: .any)["my.nickname"].exists)
+        attachScreenshot("L7 고객 돌아오기", app: app)
+    }
+
     // MARK: - 화면 도우미
 
     /// 작가 앱의 로그인 화면에서 시험 계정으로 로그인한다. 이미 로그인한 채면 먼저 로그아웃한다.
@@ -305,6 +346,13 @@ struct EmulatorAdmin {
                                                body: ["email": email, "password": password, "returnSecureToken": true])
         guard status == 200, let token = body["idToken"] as? String else { throw Failure.badResponse(status, "signIn") }
         return token
+    }
+
+    /// Auth 사용자를 지운다(다른 기기·웹에서 계정을 지운 것처럼)
+    func deleteUser(uid: String) async throws {
+        let (status, _) = try await request("\(auth)/identitytoolkit.googleapis.com/v1/projects/\(project)/accounts:delete",
+                                            bearer: "owner", body: ["localId": uid])
+        guard status == 200 else { throw Failure.badResponse(status, "delete") }
     }
 
     func userExists(uid: String) async throws -> Bool {

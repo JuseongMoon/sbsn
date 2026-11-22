@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Observation
 import SBSNBackend
 import SBSNCore
@@ -519,11 +520,24 @@ final class PhotographerSession {
     }
 
     /// 앱이 앞으로 오면 실패한 업로드를 다시 하고 큐를 깨운다(뒤에 있는 동안 멈춘 렌더·전송을 이어 간다).
+    /// 저장된 로그인이 그사이 서버에서 무효가 됐는지도 본다(다른 기기·웹에서 계정 삭제 등).
     private func didBecomeActive() {
         for model in galleries.values {
             model.retryFailedUploads()
         }
         uploadQueue.signal()
+        Task { await revalidateAccount() }
+    }
+
+    /// 저장된 로그인이 서버에서 무효면(지워짐·막힘·갱신 토큰 폐기) 새 익명 계정으로 바꾼다. 로그인 관문이 다시 뜬다(총괄 공통 기준).
+    /// 앱 시작 때의 확인은 `Backend.signedInUserID()`가 한다.
+    private func revalidateAccount() async {
+        guard uid != nil, !isRestoring else { return }
+        guard !(await Backend.validateSession()) else { return }
+        Logger(subsystem: "com.ScienceFiction.sbsnPhotographer", category: "account")
+            .notice("저장된 로그인이 무효라 새 익명 계정으로 바꿈")
+        UserDefaults.standard.removeObject(forKey: "SBSNLaunchNickname")
+        await resetAnonymousAccount()
     }
 
     // MARK: - 계정 정리·디버그
