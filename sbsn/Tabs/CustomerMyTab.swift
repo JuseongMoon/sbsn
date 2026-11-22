@@ -1,18 +1,75 @@
 import CoreLocation
 import Photos
 import SBSNUI
+import SBSNBackend
 import SwiftUI
 import UIKit
 import UserNotifications
 
 /// "마이" 탭: 계정·고객지원·약관(빈 페이지), 권한·알림 상태, 개발 메뉴.
+/// 출시 계정 칸: 익명으로 둘러보는 중이면 로그인, 로그인했으면 닉네임·로그인 수단·로그아웃(설계 문서 1.1).
+struct CustomerAccountSection: View {
+    @Binding var showsSignIn: Bool
+    @Environment(CustomerSession.self) private var session
+    @State private var account = AccountService.current
+    @AppStorage("SBSNLaunchNickname") private var nickname = ""
+
+    var body: some View {
+        Section("계정") {
+            if let account, account.isLinked {
+                LabeledContent("닉네임", value: nickname.isEmpty ? "-" : nickname)
+                    .accessibilityIdentifier("my.nickname")
+                LabeledContent("로그인", value: account.providers.map(Self.providerName).joined(separator: ", "))
+                Button("로그아웃", role: .destructive) {
+                    Task {
+                        await session.reissueAccount()
+                        nickname = ""
+                        self.account = AccountService.current
+                    }
+                }
+                .accessibilityIdentifier("my.signOut")
+            } else {
+                Text("로그인 없이 둘러보는 중입니다. 채팅과 촬영 신청은 로그인 뒤 할 수 있습니다.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                // 시트는 목록(CustomerMyTab)에 붙인다. 이 단추는 로그인하면 사라지므로 여기에 붙이면 시트가 제대로 닫히지 않는다.
+                Button("로그인") { showsSignIn = true }
+                    .accessibilityIdentifier("my.signIn")
+            }
+        }
+        .onAppear { account = AccountService.current }
+        .onChange(of: session.uid) { _, _ in account = AccountService.current }
+        .onChange(of: showsSignIn) { _, isShowing in
+            if !isShowing { account = AccountService.current }
+        }
+    }
+
+    static func providerName(_ id: String) -> String {
+        switch id {
+        case "apple.com": "Apple"
+        case "google.com": "Google"
+        case "password": "시험 계정"
+        default: id
+        }
+    }
+}
+
 struct CustomerMyTab: View {
+    @Environment(CustomerSession.self) private var session
+    @State private var showsSignIn = false
+    @AppStorage("SBSNLaunchNickname") private var nickname = ""
+
     var body: some View {
         NavigationStack {
             List {
-                Section("계정") {
-                    CustomerSampleLink(CustomerFeatures.profile)
-                    CustomerSampleLink(CustomerFeatures.accountLink)
+                if Backend.usesLaunchFeatures {
+                    // 출시 1단계 계정(D059): 개발용 에뮬레이터를 쓸 때만. sbsn-dev는 지금의 익명 MVP 그대로
+                    CustomerAccountSection(showsSignIn: $showsSignIn)
+                } else {
+                    Section("계정") {
+                        CustomerSampleLink(CustomerFeatures.profile)
+                        CustomerSampleLink(CustomerFeatures.accountLink)
+                    }
                 }
                 CustomerPermissionsSection()
                 Section("고객지원") {
@@ -30,6 +87,12 @@ struct CustomerMyTab: View {
                 }
             }
             .navigationTitle("마이")
+            .sheet(isPresented: $showsSignIn) {
+                SignInSheet(allowsLater: true) { name in
+                    nickname = name
+                    Task { await session.accountDidChange() }
+                }
+            }
         }
     }
 }

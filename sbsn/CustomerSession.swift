@@ -1,3 +1,4 @@
+import os
 import Foundation
 import Network
 import Observation
@@ -80,7 +81,10 @@ final class CustomerSession {
     // MARK: - 디버그
 
     /// 익명 계정을 버리고 새로 만든다. 시험에서 "새 고객"이 필요할 때만 쓴다.
+    static let log = Logger(subsystem: "com.ScienceFiction.sbsn", category: "account")
+
     func reissueAccount() async {
+        Self.log.info("계정 다시 만들기 시작(현재 \(AccountService.current?.isAnonymous == true ? "익명" : "연결", privacy: .public))")
         lockTask?.cancel()
         lockTask = nil
         forgetLocalTicket()
@@ -89,7 +93,9 @@ final class CustomerSession {
         uid = nil
         do {
             try await Backend.signOut()
+            Self.log.info("로그아웃함")
         } catch {
+            Self.log.error("로그아웃 실패: \(String(describing: error), privacy: .public)")
             debugMessage = "계정을 지우지 못했습니다: \(error.localizedDescription)"
             await signIn()
             return
@@ -98,6 +104,19 @@ final class CustomerSession {
         if let uid {
             debugMessage = "새 익명 계정: \(uid)"
         }
+    }
+
+    /// 로그인으로 계정이 바뀌었을 때 리스너를 새 uid로 다시 붙인다(연결은 uid가 같고, 이미 있던 계정으로 로그인하면 바뀐다).
+    /// 탭 화면을 "로그인 중"으로 내리지 않고 uid와 리스너만 바꾼다(내렸다 올리면 화면이 깜빡이고 그 사이 누른 단추가 사라진다).
+    func accountDidChange() async {
+        guard let current = AccountService.current?.uid, current != uid else { return }
+        lockTask?.cancel()
+        lockTask = nil
+        forgetLocalTicket()
+        dismissedTicketId = nil
+        serverTicketId = nil
+        uid = current
+        listenToServerLock(uid: current)
     }
 
     func clearLocalTicketForDebug() {
