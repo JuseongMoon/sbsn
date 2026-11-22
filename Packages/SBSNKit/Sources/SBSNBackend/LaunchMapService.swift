@@ -31,8 +31,13 @@ public enum LaunchMapService {
             guard let uid = row["artistUid"] as? String,
                   let east = (row["eastMm"] as? NSNumber)?.int64Value, let north = (row["northMm"] as? NSNumber)?.int64Value
             else { return nil }
-            return PublicLocationGrid.MapPhotographer(uid: uid, nickname: row["nickname"] as? String ?? "작가",
-                                                      display: .init(eastMm: east, northMm: north))
+            return PublicLocationGrid.MapPhotographer(
+                uid: uid, nickname: row["nickname"] as? String ?? "작가", display: .init(eastMm: east, northMm: north),
+                cell: (row["cellId"] as? String).flatMap(PublicLocationGrid.Cell.init(id:)),
+                radiusMeters: (row["radiusMeters"] as? NSNumber)?.int64Value ?? 300,
+                availabilityEndsAt: (row["availabilityEndsAt"] as? String).flatMap(LaunchMatchService.date(rfc3339:)),
+                breakReason: row["breakReason"] as? String,
+                recommendedShootMinutes: (row["recommendedShootMinutes"] as? NSNumber)?.intValue)
         }
         return Result(photographers: photographers, truncated: data["truncated"] as? Bool ?? false)
     }

@@ -221,16 +221,34 @@ public enum PublicLocationGrid {
         return (w, s, e, n, narrowedX || narrowedY)
     }
 
-    /// 지도에 보일 작가 한 명(findLaunchPhotographersV1 결과)
+    /// 지도에 보일 작가 한 명(findLaunchPhotographersV1 결과). 2단계(W5)부터 칸·반경·끝 시각·휴게 사유가 같이 온다.
     public struct MapPhotographer: Sendable, Equatable {
         public let uid: String
         public let nickname: String
         public let display: ProjectedPoint
+        /// 작가의 200m 칸. 반경 판정(D065)에 쓴다. 응답에 없으면 표시점의 칸.
+        public let cell: Cell
+        public let radiusMeters: Int64
+        public let availabilityEndsAt: Date?
+        /// 휴게 중이면 사유 코드(`meal`·`in_transit`·`equipment`·`rest`)
+        public let breakReason: String?
+        public let recommendedShootMinutes: Int?
 
-        public init(uid: String, nickname: String, display: ProjectedPoint) {
+        public init(uid: String, nickname: String, display: ProjectedPoint, cell: Cell? = nil, radiusMeters: Int64 = 300,
+                    availabilityEndsAt: Date? = nil, breakReason: String? = nil, recommendedShootMinutes: Int? = nil) {
             self.uid = uid
             self.nickname = nickname
             self.display = display
+            self.cell = cell ?? Cell(containing: display)
+            self.radiusMeters = radiusMeters
+            self.availabilityEndsAt = availabilityEndsAt
+            self.breakReason = breakReason
+            self.recommendedShootMinutes = recommendedShootMinutes
+        }
+
+        /// 고객 위치(EPSG:5179 mm)가 이 작가의 활동 반경 안인지(D065). 위치를 모르면 nil.
+        public func isWithinRadius(of customer: ProjectedPoint?) -> Bool? {
+            customer.map { cell.isWithin(radiusMeters: radiusMeters, of: $0) }
         }
     }
 

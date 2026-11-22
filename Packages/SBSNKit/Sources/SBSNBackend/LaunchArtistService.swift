@@ -35,6 +35,19 @@ public enum LaunchArtistService {
         try await call("setLaunchAvailabilityV1", ["available": available, "deviceSessionId": deviceSessionId])
     }
 
+    /// 2단계(W5): 촬영 가능을 반경·끝 시각·휴게와 함께 켜거나 바꾼다. 켠 채로 바꿀 때도 같은 `deviceSessionId`를 쓴다(새 세션 아님).
+    /// 휴게를 끝내면 `breakReason: nil`. 끌 때는 `setAvailability(false, …)`.
+    public static func setAvailability(deviceSessionId: String, radiusMeters: Int64, endsAt: Date,
+                                       breakReason: LaunchMatch.BreakReason?) async throws {
+        try await call("setLaunchAvailabilityV1", [
+            "available": true,
+            "deviceSessionId": deviceSessionId,
+            "radiusMeters": radiusMeters,
+            "availabilityEndsAt": LaunchMatchService.rfc3339(endsAt),
+            "breakReason": breakReason?.rawValue ?? NSNull(),
+        ])
+    }
+
     /// 표시점을 발행한다. 서버는 칸 안 포함·승인·기기·60초 제한을 확인하고 지도 문서를 120초 유효로 둔다.
     public static func publish(_ publication: PublicLocationGrid.Publication, deviceSessionId: String) async throws {
         try await call("publishLaunchLocationV1", [

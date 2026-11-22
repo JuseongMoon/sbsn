@@ -140,8 +140,63 @@ public enum AccountService {
             data["appleCode"] = appleCode
             data["appleClientId"] = appleClientId
         }
-        let response = try await Backend.functions(region: region).httpsCallable("requestAccountDeletionV1").call(data)
-        return (response.data as? [String: Any])?["status"] as? String ?? "queued"
+        do {
+            let response = try await Backend.functions(region: region).httpsCallable("requestAccountDeletionV1").call(data)
+            return (response.data as? [String: Any])?["status"] as? String ?? "queued"
+        } catch {
+            throw DeletionBlocked(error) ?? error
+        }
+    }
+
+    /// 진행 중인 건이 있어 서버가 삭제를 거부했다(D065·D066, 웹 W10).
+    /// `failed-precondition` + `details.reason = ACTIVE_SHOOTING`, `blockerKind`, `blockerId`(작가 사진 공개 전이면 `deliveryUnlockAt`).
+    public struct DeletionBlocked: LocalizedError, Equatable {
+        public enum Kind: String, Sendable {
+            /// 답을 기다리는 신청(신청 ID → 그 방을 연다)
+            case request
+            /// 시작 대기·촬영 중인 티켓
+            case ticket
+            /// 작가: 끝난 촬영의 사진을 처음 공개하기 전(3단계부터)
+            case delivery
+        }
+
+        public let kind: Kind
+        public let blockerId: String
+        /// `delivery`: 이 시각부터 삭제할 수 있다(촬영 종료 뒤 72시간)
+        public let unlockAt: Date?
+
+        /// 앱 안내(D065·D066 문구). `delivery`의 시각은 한국 시각으로 초 없이 보인다.
+        public var errorDescription: String? {
+            switch kind {
+            case .request, .ticket:
+                return "진행 중인 촬영을 끝내거나 취소한 뒤 삭제할 수 있습니다"
+            case .delivery:
+                let base = "촬영한 사진을 고객에게 처음 올린 뒤 삭제할 수 있습니다."
+                guard let unlockAt else { return base }
+                let time = unlockAt.formatted(.dateTime.month(.defaultDigits).day().hour().minute()
+                    .locale(Locale(identifier: "ko_KR")))
+                return "\(base) 공개하지 못하면 \(time)부터 삭제할 수 있습니다."
+            }
+        }
+
+        public init(kind: Kind, blockerId: String, unlockAt: Date?) {
+            self.kind = kind
+            self.blockerId = blockerId
+            self.unlockAt = unlockAt
+        }
+
+        /// 서버 오류에서 읽는다. 다른 오류면 nil.
+        init?(_ error: Error) {
+            let nsError = error as NSError
+            guard nsError.domain == FunctionsErrorDomain, nsError.code == FunctionsErrorCode.failedPrecondition.rawValue,
+                  let details = nsError.userInfo[FunctionsErrorDetailsKey] as? [String: Any],
+                  details["reason"] as? String == "ACTIVE_SHOOTING",
+                  let kind = Kind(rawValue: details["blockerKind"] as? String ?? ""),
+                  let blockerId = details["blockerId"] as? String
+            else { return nil }
+            self.init(kind: kind, blockerId: blockerId,
+                      unlockAt: (details["deliveryUnlockAt"] as? String).flatMap(LaunchMatchService.date(rfc3339:)))
+        }
     }
 
     /// 삭제 작업이 끝났는지 최대 `timeout` 동안 본다(`accountDeletionJobs/{uid}`, 본인만 읽기). 끝났으면 true.
