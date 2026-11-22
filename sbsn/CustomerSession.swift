@@ -29,6 +29,8 @@ final class CustomerSession {
     private(set) var isOnline = true
     /// 디버그 메뉴 동작의 결과 안내
     private(set) var debugMessage: String?
+    /// 계정 삭제 뒤 한 번 보이는 알림(로그아웃 뒤 마이 탭 위에 띄운다. 다음 실행 때 다시 알리지 않는다)
+    var accountNotice: String?
 
     /// 사용자가 "지도로 돌아가기"로 떠난 티켓. 서버 잠금 해제가 아직 반영되지 않았어도 지도로 갈 수 있게 한다.
     private var dismissedTicketId: String?

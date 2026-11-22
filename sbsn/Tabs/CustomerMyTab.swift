@@ -29,7 +29,8 @@ struct CustomerAccountSection: View {
                 }
                 .accessibilityIdentifier("my.signOut")
                 // 계정 삭제(L10): 서버가 지도·데이터·Auth를 정리한다. 접수되면 익명 둘러보기로 돌아간다.
-                AccountDeletionButton { _ in
+                AccountDeletionButton(audience: .customer) { notice in
+                    session.accountNotice = notice
                     await session.reissueAccount()
                     nickname = ""
                     self.account = AccountService.current

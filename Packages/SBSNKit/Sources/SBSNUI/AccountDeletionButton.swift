@@ -9,15 +9,39 @@ import UIKit
 /// - 서버 삭제 함수(`requestAccountDeletionV1`)가 공개 지도에서 바로 내리고 데이터·Apple 토큰·Auth를 정리한다.
 /// - 서버는 5분 안에 로그인한 계정만 받는다. 오래됐으면 "다시 로그인한 뒤 요청해 주세요."가 오고 그 문구를 그대로 보인다.
 /// - Apple 연결 계정은 Apple로 다시 인증해 받은 인가 코드와 이 앱의 App ID를 함께 보낸다(iOS 경로).
-/// - 확인 창 문구는 정책 담당이 정할 때까지 가안이다.
+/// - 요청한 뒤 최대 10초 동안 삭제 작업을 지켜보고 끝났는지에 따라 알림 문구를 정한다(총괄 구현 결정).
+///   알림은 로그아웃 뒤에도 보이도록 앱이 화면 뿌리에 띄운다(`onRequested`의 `notice`).
+/// - 확인 창 문구는 정책 세션 제안안(사용자 확정 전)이다. "24시간"은 웹 답에 따라 바뀔 수 있다.
 public struct AccountDeletionButton: View {
-    let onRequested: (_ status: String) async -> Void
+    /// 확인 창 본문(앱마다 다르다)
+    public enum Audience {
+        case customer
+        case photographer
+
+        var message: String {
+            switch self {
+            case .customer:
+                "삭제를 요청하면 프로필이 바로 내려가고 되돌릴 수 없습니다. 산 사진은 먼저 휴대폰에 저장해 두세요. "
+                    + "나머지 정보는 24시간 안에 지우고, 법에 따라 남겨야 하는 거래 기록만 정해진 기간 따로 보관합니다."
+            case .photographer:
+                "삭제를 요청하면 지도와 프로필에서 바로 내려가고 되돌릴 수 없습니다. "
+                    + "나머지 정보는 24시간 안에 지우고, 법에 따라 남겨야 하는 거래·정산 기록만 정해진 기간 따로 보관합니다."
+            }
+        }
+    }
+
+    public static let completedNotice = "계정을 삭제했습니다."
+    public static let acceptedNotice = "삭제 요청을 받았습니다. 24시간 안에 삭제를 마칩니다."
+
+    let audience: Audience
+    let onRequested: (_ notice: String) async -> Void
     @State private var confirming = false
     @State private var isWorking = false
     @State private var message: String?
 
-    /// `onRequested`: 삭제를 접수한 뒤(로그아웃해 둘러보기·로그인 화면으로 돌아간다)
-    public init(onRequested: @escaping (_ status: String) async -> Void) {
+    /// `onRequested`: 삭제를 접수하고 완료 여부를 본 뒤. 앱은 `notice`를 화면 뿌리에 띄우고 로그아웃해 둘러보기·로그인 관문으로 돌아간다.
+    public init(audience: Audience, onRequested: @escaping (_ notice: String) async -> Void) {
+        self.audience = audience
         self.onRequested = onRequested
     }
 
@@ -26,13 +50,13 @@ public struct AccountDeletionButton: View {
             .disabled(isWorking)
             .accessibilityIdentifier("my.deleteAccount")
             .alert("계정을 삭제할까요?", isPresented: $confirming) {
-                Button("삭제", role: .destructive) {
+                Button("취소", role: .cancel) {}
+                Button("계정 삭제", role: .destructive) {
                     Task { await delete() }
                 }
                 .accessibilityIdentifier("my.deleteAccount.confirm")
-                Button("취소", role: .cancel) {}
             } message: {
-                Text("삭제를 요청하면 지도와 프로필에서 바로 내려가고 되돌릴 수 없습니다. 산 사진은 먼저 휴대폰에 저장해 두세요.")
+                Text(audience.message)
             }
         if isWorking {
             ProgressView()
@@ -54,9 +78,14 @@ public struct AccountDeletionButton: View {
             if AccountService.current?.providers.contains("apple.com") == true {
                 appleCode = try await reauthenticateWithApple()
             }
+            let uid = AccountService.current?.uid
             let status = try await AccountService.requestDeletion(appleCode: appleCode,
                                                                  appleClientId: appleCode == nil ? nil : Bundle.main.bundleIdentifier)
-            await onRequested(status)
+            var completed = status == "completed"
+            if !completed, let uid {
+                completed = await AccountService.waitForDeletionCompleted(uid: uid)
+            }
+            await onRequested(completed ? Self.completedNotice : Self.acceptedNotice)
         } catch let error as ASAuthorizationError where error.code == .canceled {
             message = "Apple 재인증을 취소했습니다."
         } catch {

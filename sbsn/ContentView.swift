@@ -48,6 +48,13 @@ struct ContentView: View {
                 }
             }
         }
+        // 계정 삭제 뒤 알림. 로그아웃으로 탭이 다시 그려져도 보이게 뿌리에 둔다.
+        .alert(session.accountNotice ?? "", isPresented: Binding(
+            get: { session.accountNotice != nil },
+            set: { if !$0 { session.accountNotice = nil } }
+        )) {
+            Button("확인", role: .cancel) {}
+        }
         .environment(session)
         .environment(galleries)
         .task { await session.start() }

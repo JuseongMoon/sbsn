@@ -70,7 +70,8 @@ struct PhotographerAccountSection: View {
                 }
             }
             .accessibilityIdentifier("my.signOut")
-            AccountDeletionButton { _ in
+            AccountDeletionButton(audience: .photographer) { notice in
+                session.accountNotice = notice
                 await session.resetAnonymousAccount()
                 nickname = ""
             }

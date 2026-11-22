@@ -1,6 +1,7 @@
 import CryptoKit
 import FirebaseAuth
 import FirebaseCore
+import FirebaseFirestore
 import FirebaseFunctions
 import Foundation
 
@@ -136,6 +137,21 @@ public enum AccountService {
         }
         let response = try await Backend.functions(region: region).httpsCallable("requestAccountDeletionV1").call(data)
         return (response.data as? [String: Any])?["status"] as? String ?? "queued"
+    }
+
+    /// 삭제 작업이 끝났는지 최대 `timeout` 동안 본다(`accountDeletionJobs/{uid}`, 본인만 읽기). 끝났으면 true.
+    /// 읽지 못하거나 시간 안에 끝나지 않으면 false(서버가 정한 기간 안에 마친다).
+    public static func waitForDeletionCompleted(uid: String, timeout: Duration = .seconds(10)) async -> Bool {
+        let job = Firestore.firestore().collection("accountDeletionJobs").document(uid)
+        let clock = ContinuousClock()
+        let deadline = clock.now + timeout
+        while clock.now < deadline {
+            if let snapshot = try? await job.getDocument(source: .server), snapshot.get("status") as? String == "completed" {
+                return true
+            }
+            try? await Task.sleep(for: .seconds(1))
+        }
+        return false
     }
 
     /// 만 14세 확인과 닉네임을 저장하고 서버가 정한 닉네임을 돌려준다(`saveLaunchProfileV1`).

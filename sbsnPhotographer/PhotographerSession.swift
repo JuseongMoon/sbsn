@@ -58,6 +58,8 @@ final class PhotographerSession {
     let launchPublisher = LaunchPresencePublisher()
     /// 지금 로그인한 계정. 출시 기능을 쓸 때 익명이면 로그인 화면을 보인다(작가는 처음부터 로그인, D051).
     private(set) var account: AccountService.Account?
+    /// 계정 삭제 뒤 한 번 보이는 알림(로그인 관문 위에 띄운다. 다음 실행 때 다시 알리지 않는다)
+    var accountNotice: String?
 
     @ObservationIgnored private var presenceTask: Task<Void, Never>?
     @ObservationIgnored private var ticketTask: Task<Void, Never>?

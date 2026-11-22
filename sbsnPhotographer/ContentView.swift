@@ -27,14 +27,24 @@ struct ContentView: View {
     @State private var selectedTab = PhotographerTab.shoot
 
     var body: some View {
-        if Backend.usesLaunchFeatures && session.account?.isLinked != true {
-            // 출시 1단계(D051·D059): 작가 앱은 Google·Apple로 로그인한 뒤 쓴다. 개발용 에뮬레이터를 쓸 때만(sbsn-dev는 지금의 익명 MVP 그대로).
-            SignInSheet(allowsLater: false) { nickname in
-                UserDefaults.standard.set(nickname, forKey: "SBSNLaunchNickname")
-                Task { await session.accountDidChange(nickname: nickname) }
+        @Bindable var session = session
+        Group {
+            if Backend.usesLaunchFeatures && session.account?.isLinked != true {
+                // 출시 1단계(D051·D059): 작가 앱은 Google·Apple로 로그인한 뒤 쓴다. 개발용 에뮬레이터를 쓸 때만(sbsn-dev는 지금의 익명 MVP 그대로).
+                SignInSheet(allowsLater: false) { nickname in
+                    UserDefaults.standard.set(nickname, forKey: "SBSNLaunchNickname")
+                    Task { await session.accountDidChange(nickname: nickname) }
+                }
+            } else {
+                tabs
             }
-        } else {
-            tabs
+        }
+        // 계정 삭제 뒤 알림. 탭이 로그인 관문으로 바뀌어도 보이게 뿌리에 둔다.
+        .alert(session.accountNotice ?? "", isPresented: Binding(
+            get: { session.accountNotice != nil },
+            set: { if !$0 { session.accountNotice = nil } }
+        )) {
+            Button("확인", role: .cancel) {}
         }
     }
 
