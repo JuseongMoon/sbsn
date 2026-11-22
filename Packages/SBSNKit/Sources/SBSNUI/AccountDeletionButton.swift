@@ -11,7 +11,7 @@ import UIKit
 /// - Apple 연결 계정은 Apple로 다시 인증해 받은 인가 코드와 이 앱의 App ID를 함께 보낸다(iOS 경로).
 /// - 요청한 뒤 최대 10초 동안 삭제 작업을 지켜보고 끝났는지에 따라 알림 문구를 정한다(총괄 구현 결정).
 ///   알림은 로그아웃 뒤에도 보이도록 앱이 화면 뿌리에 띄운다(`onRequested`의 `notice`).
-/// - 확인 창 문구는 정책 세션 제안안(사용자 확정 전)이다. "24시간"은 웹 답에 따라 바뀔 수 있다.
+/// - 확인 창·알림 문구는 사용자 확정(D062)이다.
 public struct AccountDeletionButton: View {
     /// 확인 창 본문(앱마다 다르다)
     public enum Audience {
@@ -22,16 +22,17 @@ public struct AccountDeletionButton: View {
             switch self {
             case .customer:
                 "삭제를 요청하면 프로필이 바로 내려가고 되돌릴 수 없습니다. 산 사진은 먼저 휴대폰에 저장해 두세요. "
-                    + "나머지 정보는 24시간 안에 지우고, 법에 따라 남겨야 하는 거래 기록만 정해진 기간 따로 보관합니다."
+                    + "나머지 정보도 바로 지우고, 법에 따라 남겨야 하는 거래 기록은 정해진 기간 따로 보관합니다."
             case .photographer:
                 "삭제를 요청하면 지도와 프로필에서 바로 내려가고 되돌릴 수 없습니다. "
-                    + "나머지 정보는 24시간 안에 지우고, 법에 따라 남겨야 하는 거래·정산 기록만 정해진 기간 따로 보관합니다."
+                    + "나머지 정보도 바로 지우고, 법에 따라 남겨야 하는 거래·정산 기록은 정해진 기간 따로 보관합니다."
             }
         }
     }
 
     public static let completedNotice = "계정을 삭제했습니다."
-    public static let acceptedNotice = "삭제 요청을 받았습니다. 24시간 안에 삭제를 마칩니다."
+    /// 10초 안에 completed를 보지 못한 드문 경우(서버는 데이터·Auth를 먼저 지우고 completed를 쓴다)
+    public static let acceptedNotice = "삭제 요청을 받았습니다. 늦어도 24시간 안에 마칩니다."
 
     let audience: Audience
     let onRequested: (_ notice: String) async -> Void
