@@ -44,10 +44,23 @@ public enum Backend {
             Firestore.firestore().settings = settings
             Storage.storage().useEmulator(withHost: host, port: Emulator.storagePort)
             self.emulator = emulator
+            resetAuthIfBackendChanged(to: "emulator:\(host)")
             return
         }
         #endif
         FirebaseApp.configure()
+        resetAuthIfBackendChanged(to: "default")
+    }
+
+    /// 키체인에 남은 로그인은 그 로그인을 만든 서버(sbsn-dev / 에뮬레이터)에서만 쓸 수 있다. 접속 대상이 바뀌었으면 지운다.
+    /// 표시가 없는 기존 설치(지금 사용자)는 기본 서버로 보고 지우지 않는다. 에뮬레이터를 처음 쓸 때만 지운다.
+    private static func resetAuthIfBackendChanged(to target: String) {
+        let key = "SBSNAuthBackend"
+        let previous = UserDefaults.standard.string(forKey: key)
+        if previous != target, previous != nil || target != "default" {
+            try? Auth.auth().signOut()
+        }
+        UserDefaults.standard.set(target, forKey: key)
     }
 
     /// 호출형 함수 인스턴스. 에뮬레이터를 쓰면 로컬 함수로 보낸다.
