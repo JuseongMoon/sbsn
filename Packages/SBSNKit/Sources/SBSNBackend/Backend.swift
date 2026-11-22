@@ -9,7 +9,7 @@ import Foundation
 public enum Backend {
     /// 앱 개발용 로컬 에뮬레이터(웹 저장소 `firebase/scripts/start_dev_emulators.sh`). 디버그 빌드에서 실행 인자
     /// `-SBSNEmulatorHost <주소>`를 줄 때만 쓴다(시뮬레이터 127.0.0.1, 실기기는 맥 LAN 주소 — 주소는 커밋하지 않는다).
-    /// sbsn-dev의 MVP 흐름과 섞이지 않게 프로젝트 ID를 에뮬레이터 전용 demo 프로젝트로 바꾼다.
+    /// sbsn-dev 데이터와 섞이지 않게 프로젝트 ID를 에뮬레이터 전용 demo 프로젝트로 바꾼다.
     public struct Emulator: Sendable, Equatable {
         public static let projectID = "demo-sbsn-functions"
         public static let storageBucket = "demo-sbsn-functions.appspot.com"
@@ -22,11 +22,8 @@ public enum Backend {
     }
 
     /// 지금 쓰는 에뮬레이터. nil이면 GoogleService-Info.plist의 실제 프로젝트(sbsn-dev)에 붙는다.
+    /// 출시 1단계 화면(계정·지도)은 어느 쪽이든 늘 켜져 있다(D063).
     nonisolated(unsafe) public private(set) static var emulator: Emulator?
-
-    /// 출시 1단계 기능(계정·지도)을 쓸지. sbsn-dev에 출시 함수가 배포되기 전이라 개발용 에뮬레이터를 쓸 때만 켠다
-    /// (sbsn-dev의 MVP 흐름은 그대로 둔다, D059·D060).
-    public static var usesLaunchFeatures: Bool { emulator != nil }
 
     /// 앱 시작 시 한 번 호출한다. 앱 번들에 GoogleService-Info.plist가 있어야 한다.
     @MainActor

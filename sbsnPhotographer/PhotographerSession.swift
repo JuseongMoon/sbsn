@@ -24,18 +24,14 @@ final class PhotographerSession {
 
     static let shared = PhotographerSession()
 
-    private static let displayNameKey = "SBSNDisplayName"
     private static let activeTicketKey = "SBSNActiveTicketID"
     private static let availableKey = "SBSNIsAvailable"
     private static let pendingGalleriesKey = "SBSNPendingGalleryTicketIDs"
     private static let publishedGalleriesKey = "SBSNPublishedGalleries"
 
     private(set) var uid: String?
-    var displayName: String {
-        didSet { UserDefaults.standard.set(displayName, forKey: Self.displayNameKey) }
-    }
+    /// "촬영 가능". UserDefaults에 남기고 출시 발행기(`launchPublisher`)와 함께 켜고 끈다(D063, MVP presence는 지웠다).
     private(set) var isAvailable = false
-    private(set) var presence: PhotographerPresence?
     /// 진행 중인 티켓(매칭~촬영). 끝나면 공개 대기로 옮기고 비운다.
     private(set) var ticket: TicketRecord?
     /// 공개 대기 티켓의 선별 업로드 엔진. 키는 티켓 ID.
@@ -54,14 +50,13 @@ final class PhotographerSession {
     private(set) var cancelledByCustomer: TicketRecord?
     private(set) var isRestoring = false
     let location = PhotographerLocationTracker()
-    /// 출시 1단계 공개 위치 발행(개발용 에뮬레이터를 쓸 때만, D059)
+    /// 출시 1단계 공개 위치 발행(D059·D063)
     let launchPublisher = LaunchPresencePublisher()
-    /// 지금 로그인한 계정. 출시 기능을 쓸 때 익명이면 로그인 화면을 보인다(작가는 처음부터 로그인, D051).
+    /// 지금 로그인한 계정. 익명이면 로그인 화면을 보인다(작가는 처음부터 로그인, D051·D063).
     private(set) var account: AccountService.Account?
     /// 계정 삭제 뒤 한 번 보이는 알림(로그인 관문 위에 띄운다. 다음 실행 때 다시 알리지 않는다)
     var accountNotice: String?
 
-    @ObservationIgnored private var presenceTask: Task<Void, Never>?
     @ObservationIgnored private var ticketTask: Task<Void, Never>?
     @ObservationIgnored private var restoration: Task<Void, Never>?
     @ObservationIgnored private var lifecycleObservers: [any NSObjectProtocol] = []
@@ -77,7 +72,6 @@ final class PhotographerSession {
     )
 
     private init() {
-        displayName = UserDefaults.standard.string(forKey: Self.displayNameKey) ?? ""
         publishedGalleries = Self.loadPublishedGalleries()
         Backend.configure()
     }
@@ -140,7 +134,6 @@ final class PhotographerSession {
             let uid = try await Backend.signedInUserID()
             self.uid = uid
             account = AccountService.current
-            listenToPresence(uid: uid)
             // 맥에서 자동 시험을 돌릴 때 관리자 스크립트가 만든 시험 티켓을 실행 인자(-SBSNTicketID)로 넘긴다.
             if let testTicketID = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)["SBSNTicketID"] as? String {
                 await attach(ticketID: testTicketID, restoring: testTicketID == activeTicketID)
@@ -151,7 +144,7 @@ final class PhotographerSession {
             await refreshPublishedAt(of: publishedGalleries.map(\.ticketID))
             await launchPublisher.flushPendingTurnOff(uid: uid)
             if UserDefaults.standard.bool(forKey: Self.availableKey) {
-                // 지난번에 켜 둔 "촬영 가능"을 이어 간다. 위치가 오면 presence가 다시 발행된다.
+                // 지난번에 켜 둔 "촬영 가능"을 이어 간다. 위치가 오면 출시 발행기가 다시 발행한다.
                 isAvailable = true
                 location.start()
                 // 출시 공개 위치는 저장한 세션으로 발행만 해서 소유권을 확인한다(켜기를 다시 보내지 않는다, 격자 규격).
@@ -164,30 +157,8 @@ final class PhotographerSession {
         }
     }
 
-    private func listenToPresence(uid: String) {
-        presenceTask?.cancel()
-        presenceTask = Task { [weak self] in
-            do {
-                for try await presence in PhotographerDirectory.presence(of: uid) {
-                    guard let self else { return }
-                    self.presence = presence
-                    if let presence {
-                        isAvailable = presence.isAvailable
-                        UserDefaults.standard.set(presence.isAvailable, forKey: Self.availableKey)
-                    }
-                    // 고객이 확정하면 잠금에 티켓 ID가 들어온다. 알림보다 먼저 올 수도, 나중에 올 수도 있다(둘 다 멱등).
-                    if let ticketID = presence?.activeTicketId, ticketID != ticket?.id {
-                        await attach(ticketID: ticketID, restoring: false)
-                    }
-                }
-            } catch {
-                self?.errorMessage = "상태를 읽지 못했습니다: \(error.localizedDescription)"
-            }
-        }
-    }
-
     /// 티켓을 지켜보기 시작한다. 복원이면 로컬 폴더로 전달 엔진도 되살린다.
-    /// presence 리스너와 알림이 같은 티켓을 거의 동시에 넘겨도 한 번만 붙는다.
+    /// 매칭은 알림으로만 안다(D063, presence 리스너는 지웠다). 알림과 탭이 같은 티켓을 거의 동시에 넘겨도 한 번만 붙는다.
     private func attach(ticketID: String, restoring: Bool) async {
         guard ticket?.id != ticketID, attachingTicketID != ticketID else { return }
         attachingTicketID = ticketID
@@ -230,10 +201,6 @@ final class PhotographerSession {
             if record.isCurated {
                 beginGallery(for: record)
             }
-            // 고객이 끝낸 경우(작가가 사라졌을 때) 고객이 같은 쓰기로 잠금을 풀었다. "촬영 가능"만 끈다.
-            if presence?.isAvailable == true, let uid {
-                Task { try? await PhotographerDirectory.setAvailable(uid: uid, false) }
-            }
             detachTicket()
         case .cancelled:
             detachTicket()
@@ -242,7 +209,7 @@ final class PhotographerSession {
             }
         }
         if previous?.phase != record.phase {
-            // 매칭·촬영 중에는 공개 위치 대신 티켓 안 위치를 쓴다. 다음 위치부터 바로 보내도록 발행 기록을 지운다.
+            // 단계가 바뀌면 티켓 안 위치를 다음 위치부터 바로 보내도록 발행 기록을 지운다.
             lastPublishedAt = nil
             lastPublishedPoint = nil
         }
@@ -397,32 +364,24 @@ final class PhotographerSession {
     // MARK: - 촬영 가능
 
     var canGoAvailable: Bool {
-        PhotographerPresence.validDisplayName(displayName) != nil && ticket == nil && uid != nil
+        ticket == nil && uid != nil
     }
 
-    /// "촬영 가능"을 켜고 끈다. 켜면 위치·알림 권한을 묻고, 첫 위치가 오면 공개 상태를 발행한다.
+    /// "촬영 가능"을 켜고 끈다. 켜면 위치·알림 권한을 묻고, 출시 발행기가 위치가 오는 대로 공개 위치를 발행한다.
     func setAvailable(_ available: Bool) {
         guard let uid else { return }
         if available {
-            guard let name = PhotographerPresence.validDisplayName(displayName) else {
-                errorMessage = "이름을 1~39자로 입력해 주세요."
-                return
-            }
             guard ticket == nil else {
                 errorMessage = "진행 중인 촬영이 있습니다. 촬영을 끝내면 다시 켤 수 있습니다."
                 return
             }
-            displayName = name
             isAvailable = true
             UserDefaults.standard.set(true, forKey: Self.availableKey)
             errorMessage = nil
             location.start()
             requestNotificationAuthorizationIfNeeded()
-            // 출시 1단계 공개 위치(D059): 켜는 순간 새 세션으로 소유권을 가져오고 60초마다 표시점을 발행한다(에뮬레이터일 때만).
+            // 출시 1단계 공개 위치(D059): 켜는 순간 새 세션으로 소유권을 가져오고 60초마다 표시점을 발행한다.
             launchPublisher.turnOn(uid: uid)
-            if let point = location.latest {
-                publishPresence(point: point)
-            }
         } else {
             isAvailable = false
             UserDefaults.standard.set(false, forKey: Self.availableKey)
@@ -430,15 +389,6 @@ final class PhotographerSession {
                 location.stop()
             }
             Task { await launchPublisher.turnOff(uid: uid) }
-            // 공개 상태 문서가 아직 없으면(위치를 한 번도 발행하기 전에 껐으면) 끌 것이 없다.
-            guard presence != nil else { return }
-            Task {
-                do {
-                    try await PhotographerDirectory.setAvailable(uid: uid, false)
-                } catch {
-                    errorMessage = "상태를 끄지 못했습니다: \(error.localizedDescription)"
-                }
-            }
         }
     }
 
@@ -456,20 +406,14 @@ final class PhotographerSession {
         }
     }
 
+    /// 티켓 안 만나기 위치 공유. 대기 중 공개 위치는 출시 발행기가 60초마다 `location.latest`로 따로 보낸다.
     private func handleLocation(_ point: GeoPoint) {
-        if let ticket {
-            // 매칭 뒤 만나기 전까지만: 만나야 하므로 자주, 정확하게. 촬영이 시작되면 보내지 않는다.
-            guard ticket.phase.isActive, ticket.phase != .shooting,
-                  shouldPublish(point, minimumDistance: 10, minimumInterval: LocationSample.meetupPublishInterval) else { return }
-            markPublished(point)
-            Task {
-                try? await TicketLocationService.publish(ticketId: ticket.id, uid: ticket.photographerUid, point: point)
-            }
-        } else if isAvailable {
-            // 대기 중: 고객 지도용. 25m 움직이거나 3분마다. 쓰기마다 모든 고객 지도가 읽기를 하므로 아낀다.
-            guard shouldPublish(point, minimumDistance: PhotographerPresence.movementThresholdMeters,
-                                minimumInterval: PhotographerPresence.heartbeatInterval) else { return }
-            publishPresence(point: point)
+        // 매칭 뒤 만나기 전까지만: 만나야 하므로 자주, 정확하게. 촬영이 시작되면 보내지 않는다.
+        guard let ticket, ticket.phase.isActive, ticket.phase != .shooting,
+              shouldPublish(point, minimumDistance: 10, minimumInterval: LocationSample.meetupPublishInterval) else { return }
+        markPublished(point)
+        Task {
+            try? await TicketLocationService.publish(ticketId: ticket.id, uid: ticket.photographerUid, point: point)
         }
     }
 
@@ -481,19 +425,6 @@ final class PhotographerSession {
     private func markPublished(_ point: GeoPoint) {
         lastPublishedAt = Date()
         lastPublishedPoint = point
-    }
-
-    private func publishPresence(point: GeoPoint) {
-        guard let uid, isAvailable else { return }
-        markPublished(point)
-        let name = PhotographerPresence.validDisplayName(displayName) ?? "작가"
-        Task {
-            do {
-                try await PhotographerDirectory.publish(uid: uid, displayName: name, isAvailable: true, location: point)
-            } catch {
-                errorMessage = "위치를 올리지 못했습니다: \(error.localizedDescription)"
-            }
-        }
     }
 
     // MARK: - 전이
@@ -595,17 +526,15 @@ final class PhotographerSession {
         uploadQueue.signal()
     }
 
-    // MARK: - 디버그
+    // MARK: - 계정 정리·디버그
 
-    /// 새 작가로 시험하려고 익명 계정을 버린다. 익명 계정은 키체인에 남아 앱을 지워도 돌아오기 때문이다.
-    /// 출시 계정의 로그아웃·계정 삭제 뒤에도 쓴다(새 익명 계정이 되고, 출시 기능을 쓰면 로그인 화면이 다시 뜬다).
+    /// 출시 계정의 로그아웃·계정 삭제 뒤 새 익명 계정으로 바꾼다(로그인 화면이 다시 뜬다).
+    /// 출시 로그인 시험(`LaunchAuthProbeSection`)의 로그아웃도 쓴다.
     func resetAnonymousAccount() async {
         // 공개 위치를 먼저 끈다(로그아웃 뒤에는 이 계정으로 끄기를 보낼 수 없다, 격자 규격).
         await launchPublisher.turnOff(uid: uid)
-        presenceTask?.cancel()
         ticketTask?.cancel()
         ticket = nil
-        presence = nil
         isAvailable = false
         location.stop()
         UserDefaults.standard.removeObject(forKey: Self.activeTicketKey)
@@ -615,7 +544,6 @@ final class PhotographerSession {
             let uid = try await Backend.signedInUserID()
             self.uid = uid
             account = AccountService.current
-            listenToPresence(uid: uid)
             errorMessage = nil
         } catch {
             errorMessage = "계정을 다시 만들지 못했습니다: \(error.localizedDescription)"
@@ -629,24 +557,18 @@ final class PhotographerSession {
     // MARK: - 출시 계정(D059)
 
     /// 로그인 화면에서 로그인한 뒤. 익명 계정에 연결했으면 uid가 같고, 이미 있던 계정으로 로그인했으면 바뀐다.
-    /// 이름이 비어 있으면 서버 닉네임을 쓴다(지도에 보이는 이름은 닉네임이다, L06).
+    /// 닉네임은 로그인 화면이 `SBSNLaunchNickname`에 저장하고, 지도에 보이는 이름은 서버 닉네임이다(L06). 여기서는 쓰지 않는다.
     func accountDidChange(nickname: String) async {
         account = AccountService.current
-        if !nickname.isEmpty, displayName.isEmpty || PhotographerPresence.validDisplayName(displayName) == nil {
-            displayName = String(nickname.prefix(39))
-        }
         guard let current = account?.uid, current != uid else { return }
         await launchPublisher.turnOff(uid: uid)
-        presenceTask?.cancel()
         ticketTask?.cancel()
         ticket = nil
-        presence = nil
         isAvailable = false
         location.stop()
         UserDefaults.standard.removeObject(forKey: Self.activeTicketKey)
         UserDefaults.standard.set(false, forKey: Self.availableKey)
         uid = current
-        listenToPresence(uid: current)
     }
 
     #if DEBUG
@@ -686,8 +608,9 @@ final class PhotographerSession {
     /// 서버 없이 고르기 화면을 시험한다(가져오기·검사·렌더·화면 상태). 가짜 끝난 티켓이라 업로드는 실패로 끝나고, 공개 대기 목록에 저장하지 않는다.
     func openDebugGallery() {
         let now = Date()
+        let nickname = UserDefaults.standard.string(forKey: "SBSNLaunchNickname") ?? ""
         let record = TicketRecord(id: "debug-\(UUID().uuidString.prefix(8).lowercased())", customerUid: "debug-customer",
-                                  photographerUid: uid ?? "debug-photographer", photographerDisplayName: displayName,
+                                  photographerUid: uid ?? "debug-photographer", photographerDisplayName: nickname.isEmpty ? "작가" : nickname,
                                   createdAt: now.addingTimeInterval(-20 * 60), customerStartedAt: now.addingTimeInterval(-15 * 60),
                                   photographerStartedAt: now.addingTimeInterval(-15 * 60), endedAt: now.addingTimeInterval(-60))
         let model = makeGallery(for: record)

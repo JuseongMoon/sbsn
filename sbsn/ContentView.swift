@@ -68,7 +68,7 @@ struct ContentView: View {
                     CustomerTicketView(workspace: workspace)
                         .id(workspace.ticketId)
                 } else {
-                    PhotographerMapView(myUid: uid)
+                    PhotographerMapView()
                 }
             }
             .tabItem { Label("촬영", systemImage: "camera") }

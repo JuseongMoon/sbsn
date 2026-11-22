@@ -267,9 +267,6 @@ struct SamplePortfolioScreen: View {
 struct SampleRegistrationScreen: View {
     var body: some View {
         List {
-            Section {
-                Label("등록 승인됨(예시)", systemImage: "checkmark.seal.fill")
-            }
             Section("등록") {
                 LabeledContent("신원 확인", value: "완료 · 2026-11-01")
                 LabeledContent("계약", value: "M1 지정 근로(예시)")
@@ -369,7 +366,7 @@ struct SamplePhotographerTermsScreen: View {
     var body: some View {
         List {
             Section {
-                // 목록 순서: 작가 이용약관, 위치기반서비스 이용약관, 위치정보, 개인정보 처리방침, 동의 내역, 계정 삭제
+                // 목록 순서: 작가 이용약관, 위치기반서비스 이용약관, 위치정보, 개인정보 처리방침, 동의 내역(계정 삭제는 마이 탭 계정 칸의 실제 기능)
                 NavigationLink(PhotographerSampleData.documents[1].title) { SampleDocumentView(PhotographerSampleData.documents[1]) }
                 NavigationLink(PhotographerSampleData.documents[0].title) { SampleDocumentView(PhotographerSampleData.documents[0]) }
                 NavigationLink("위치정보") {
@@ -381,7 +378,6 @@ struct SamplePhotographerTermsScreen: View {
                 .accessibilityIdentifier("sample.locationInfoLink")
                 NavigationLink(PhotographerSampleData.documents[2].title) { SampleDocumentView(PhotographerSampleData.documents[2]) }
                 NavigationLink("동의 내역") { SamplePhotographerConsentsScreen() }
-                NavigationLink("계정 삭제") { SamplePhotographerDeletionScreen() }
             }
             SampleNoticeSection()
         }
@@ -402,25 +398,5 @@ struct SamplePhotographerConsentsScreen: View {
             SampleNoticeSection()
         }
         .sampleScreen(title: "동의 내역", id: "consents")
-    }
-}
-
-struct SamplePhotographerDeletionScreen: View {
-    @State private var status: String?
-
-    var body: some View {
-        List {
-            Section("지워지는 것") {
-                Text("작가 계정과 프로필·포트폴리오")
-                Text("정산 기록은 세법이 정한 기간 동안 보관한 뒤 지웁니다")
-                Text("앱 안의 고른 사진 사본은 공개하면 지워집니다. 사진 앱의 원본은 그대로 남습니다")
-            }
-            Section {
-                Button("삭제 요청", role: .destructive) { status = "삭제를 요청했습니다(예시, 실제로 지우지 않음)" }
-                SampleStatus(status)
-            }
-            SampleNoticeSection()
-        }
-        .sampleScreen(title: "계정 삭제", id: "deletion")
     }
 }

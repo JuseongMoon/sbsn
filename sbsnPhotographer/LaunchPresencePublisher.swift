@@ -3,8 +3,8 @@ import Observation
 import SBSNBackend
 import SBSNCore
 
-/// 출시 1단계 공개 위치 발행(D059, L07·L08, 웹 격자 규격 "기기 세션"). 개발용 에뮬레이터를 쓸 때만 돈다.
-/// sbsn-dev의 MVP presence 흐름은 그대로 두고 이 루프는 켜지 않는다. Android `LaunchPresencePublisher`(bfe54c7·fbba4b9)와 같은 동작이다.
+/// 출시 1단계 공개 위치 발행(D059, L07·L08, 웹 격자 규격 "기기 세션"). 늘 돈다(D063, MVP presence 발행은 지웠다).
+/// Android `LaunchPresencePublisher`(bfe54c7·fbba4b9)와 같은 동작이다.
 ///
 /// - 촬영 가능을 **직접 켜면**(`turnOn`) 새 공개 세션(세션 키·deviceSessionId)을 만들고 `setLaunchAvailabilityV1(true)` 뒤 60초마다 표시점을 발행한다.
 /// - **앱 재시작으로 이어 갈 때**(`resume`)는 저장한 세션으로 발행만 한다. 켜기를 다시 보내 다른 기기의 소유권을 가져오지 않는다(격자 규격).
@@ -31,11 +31,8 @@ final class LaunchPresencePublisher {
     @ObservationIgnored var onRejected: ((String) -> Void)?
     @ObservationIgnored private var task: Task<Void, Never>?
 
-    var isEnabled: Bool { Backend.usesLaunchFeatures }
-
     /// 촬영 가능을 직접 켰을 때. 새 세션을 만들고 소유권을 가져온다.
     func turnOn(uid: String) {
-        guard isEnabled else { return }
         let session = LaunchPublicSession.start(uid: uid)
         LaunchPublicSession.Store.save(session)
         run(session, sendTurnOn: true)
@@ -43,7 +40,6 @@ final class LaunchPresencePublisher {
 
     /// 앱이 다시 켜져 촬영 가능을 이어 갈 때. 저장한 세션이 없으면 false(작가가 다시 켜야 한다).
     func resume(uid: String) -> Bool {
-        guard isEnabled else { return true }
         guard let session = LaunchPublicSession.Store.load(uid: uid) else { return false }
         if !isRunning {
             run(session, sendTurnOn: false)
@@ -54,7 +50,7 @@ final class LaunchPresencePublisher {
     /// 촬영 가능을 껐을 때·로그아웃·계정 삭제 전. 서버에 끄기를 보내고 세션을 지운다(다음에 켜면 새 키·새 표시점).
     func turnOff(uid: String?) async {
         stopLoop()
-        guard isEnabled, let uid else { return }
+        guard let uid else { return }
         guard let session = LaunchPublicSession.Store.load(uid: uid) else {
             LaunchPublicSession.Store.clear()
             return
@@ -65,7 +61,7 @@ final class LaunchPresencePublisher {
 
     /// 지난번에 실패한 끄기를 다시 보낸다(같은 계정일 때만. 다른 계정 것은 120초 뒤 지도에서 저절로 사라진다).
     func flushPendingTurnOff(uid: String) async {
-        guard isEnabled, let pending = LaunchPublicSession.Store.pendingOff else { return }
+        guard let pending = LaunchPublicSession.Store.pendingOff else { return }
         guard pending.uid == uid else {
             LaunchPublicSession.Store.setPendingOff(nil)
             return

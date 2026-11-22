@@ -1,6 +1,6 @@
 import XCTest
 
-/// 두 앱의 탭·메뉴와 예시 화면(D032, 고객 19·작가 18)과 하위 화면을 차례로 열어 캡처한다(시뮬레이터).
+/// 두 앱의 탭·메뉴와 예시 화면(D032, 고객 18·작가 18, 고객 C15 계정 연결은 D063으로 뺐다)과 하위 화면을 차례로 열어 캡처한다(시뮬레이터).
 ///
 ///   xcodebuild test -scheme sbsn -destination 'platform=iOS Simulator,id=<기기>' \
 ///     -only-testing:sbsnUITests/WireframeTourUITests
@@ -73,7 +73,7 @@ final class WireframeTourUITests: XCTestCase {
         // 마이 탭: C14~C19, C9
         app.tabBars.buttons["마이"].tap()
         shot("고객-마이", app)
-        for (id, name) in [("profile", "C14-프로필언어"), ("accountLink", "C15-계정연결"), ("help", "C16-도움말")] {
+        for (id, name) in [("profile", "C14-프로필언어"), ("help", "C16-도움말")] {
             openPlanned(id, app, shot: "고객-\(name)")
             back(app)
         }
@@ -102,8 +102,8 @@ final class WireframeTourUITests: XCTestCase {
         tapText("동의 내역", app)
         expectSample("consents", app, shot: "고객-C19-동의내역")
         back(app)
-        tapText("사진·계정 삭제", app)
-        expectSample("deletion", app, shot: "고객-C19-삭제")
+        tapText("사진 삭제", app)
+        expectSample("deletion", app, shot: "고객-C19-사진삭제")
         back(app)
         back(app)
         openPlanned("events", app, shot: "고객-마이-이벤트")
@@ -207,9 +207,6 @@ final class WireframeTourUITests: XCTestCase {
         back(app)
         tapText("동의 내역", app)
         expectSample("consents", app, shot: "작가-P18-동의내역")
-        back(app)
-        tapText("계정 삭제", app)
-        expectSample("deletion", app, shot: "작가-P18-삭제")
         back(app)
         back(app)
 

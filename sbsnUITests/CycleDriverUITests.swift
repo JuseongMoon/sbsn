@@ -1,5 +1,8 @@
 import XCTest
 
+// 2단계 매칭 때까지 돌지 않음(D063으로 MVP 위치 공개·매칭 UI를 지움). 이름 칸(`photographer.name`), MVP 핀으로 고르는 작가 카드,
+// 확정 버튼(`customer.review`·`customer.confirm`)을 찾는 매칭 진입 단계가 깨진 채로 남아 있다. 컴파일만 유지한다.
+
 /// 실기기 두 대로 선별 전달 사이클(D036)을 한 단계씩 돌리는 드라이버. 맥에서 단계마다 테스트 하나를 골라 실행한다.
 ///
 /// 사진은 작가 앱 `Documents/TestPhotos/`에 미리 넣어 두고(`xcrun devicectl device copy to`), 고르기 화면의 개발용

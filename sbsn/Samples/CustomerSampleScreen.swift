@@ -29,7 +29,6 @@ struct CustomerSampleScreen: View {
             case CustomerFeatures.retouch.id: SampleRetouchScreen()
             case CustomerFeatures.shareAndPrint.id: SampleShareScreen()
             case CustomerFeatures.profile.id: SampleProfileSettingsScreen()
-            case CustomerFeatures.accountLink.id: SampleAccountLinkScreen()
             case CustomerFeatures.help.id: SampleHelpScreen()
             case CustomerFeatures.inquiry.id: SampleInquiryScreen()
             case CustomerFeatures.refund.id: SampleRefundScreen()

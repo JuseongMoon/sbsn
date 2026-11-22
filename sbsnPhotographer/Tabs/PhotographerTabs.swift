@@ -52,7 +52,7 @@ struct PhotographerHistoryTab: View {
 }
 
 /// "마이" 탭: 작가 정보·고객지원·약관(빈 페이지), 권한·알림 상태, 개발 메뉴.
-/// 출시 계정 칸(D059, 개발용 에뮬레이터를 쓸 때만): 닉네임·로그인 수단·로그아웃·계정 삭제. 고객 `CustomerAccountSection`과 같은 식별자.
+/// 출시 계정 칸(D059·D063): 닉네임·로그인 수단·로그아웃·계정 삭제. 고객 `CustomerAccountSection`과 같은 식별자.
 /// 작가 앱은 처음부터 로그인하므로 "로그인" 단추가 없다. 로그아웃·삭제하면 로그인 화면으로 돌아간다.
 struct PhotographerAccountSection: View {
     @Environment(PhotographerSession.self) private var session
@@ -96,9 +96,7 @@ struct PhotographerMyTab: View {
     var body: some View {
         NavigationStack {
             List {
-                if Backend.usesLaunchFeatures {
-                    PhotographerAccountSection()
-                }
+                PhotographerAccountSection()
                 Section("작가 정보") {
                     PhotographerSampleLink(PhotographerFeatures.portfolio)
                     PhotographerSampleLink(PhotographerFeatures.registration)
@@ -220,14 +218,9 @@ struct PhotographerDeveloperPage: View {
                     session.clearLocalTicket()
                 }
                 .disabled(session.ticket == nil)
-                Button("익명 계정 재발급", role: .destructive) {
-                    Task { await session.resetAnonymousAccount() }
-                }
-                if session.launchPublisher.isEnabled {
-                    LabeledContent("출시 발행", value: session.launchPublisher.status ?? "-")
-                        .font(.caption)
-                        .accessibilityIdentifier("dev.launchPublish")
-                }
+                LabeledContent("출시 발행", value: session.launchPublisher.status ?? "-")
+                    .font(.caption)
+                    .accessibilityIdentifier("dev.launchPublish")
             }
             #if DEBUG
             // 출시 로그인 제공자 시험(총괄 순서 2번, sbsn-dev는 Auth만·함수 호출 없음)

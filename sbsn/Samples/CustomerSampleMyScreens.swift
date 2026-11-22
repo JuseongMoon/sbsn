@@ -1,7 +1,7 @@
 import SBSNUI
 import SwiftUI
 
-// 고객 앱 "마이" 탭 예시 화면(C14~C19). 근거: 총괄 문서 `UI_WIREFRAME_PAGES.md` 1절, 위치정보 화면은 정책 문서 02 5절.
+// 고객 앱 "마이" 탭 예시 화면(C14·C16~C19, C15 계정 연결은 실제 로그인으로 바뀌어 지웠다). 근거: 총괄 문서 `UI_WIREFRAME_PAGES.md` 1절, 위치정보 화면은 정책 문서 02 5절.
 
 // MARK: - C14 프로필·언어
 
@@ -23,32 +23,6 @@ struct SampleProfileSettingsScreen: View {
             LabeledContent("나이", value: "만 14세 이상 확인됨(예시)")
             Section {
                 Button("저장") { status = "저장했습니다(예시)" }
-                SampleStatus(status)
-            }
-            SampleNoticeSection()
-        }
-    }
-}
-
-// MARK: - C15 계정 연결
-
-struct SampleAccountLinkScreen: View {
-    @State private var status: String?
-
-    var body: some View {
-        List {
-            Section("현재 상태") {
-                Label("익명 계정 · 이 기기에만 연결", systemImage: "person.crop.circle.badge.questionmark")
-            }
-            Section {
-                Text("계정을 연결하면 기기를 바꿔도 지난 촬영과 구매한 사진을 이어서 볼 수 있습니다.")
-                Button {
-                    status = "예시 화면에서는 로그인하지 않습니다"
-                } label: {
-                    Label("Apple로 계속하기", systemImage: "apple.logo")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
                 SampleStatus(status)
             }
             SampleNoticeSection()
@@ -249,7 +223,7 @@ struct SampleTermsScreen: View {
                 }
                 .accessibilityIdentifier("sample.locationInfoLink")
                 NavigationLink("동의 내역") { SampleConsentHistoryScreen() }
-                NavigationLink("사진·계정 삭제") { SampleDeletionScreen() }
+                NavigationLink("사진 삭제") { SampleDeletionScreen() }
             }
             SampleNoticeSection()
         }
@@ -273,15 +247,14 @@ struct SampleConsentHistoryScreen: View {
     }
 }
 
+/// 사진 삭제 예시. 계정 삭제는 마이 탭 계정 칸의 실제 기능(`AccountDeletionButton`)이다.
 struct SampleDeletionScreen: View {
     @State private var status: String?
 
     var body: some View {
         List {
             Section("지워지는 것") {
-                Text("익명 계정과 촬영·주문 기록")
                 Text("서버에 남은 구매 사진(사진 앱에 저장한 사진은 그대로 남습니다)")
-                Text("위치 제공 기록은 법이 정한 기간이 지나면 지웁니다")
             }
             Section {
                 Button("삭제 요청", role: .destructive) { status = "삭제를 요청했습니다(예시, 실제로 지우지 않음)" }
@@ -289,6 +262,6 @@ struct SampleDeletionScreen: View {
             }
             SampleNoticeSection()
         }
-        .sampleScreen(title: "사진·계정 삭제", id: "deletion")
+        .sampleScreen(title: "사진 삭제", id: "deletion")
     }
 }

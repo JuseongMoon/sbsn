@@ -2,9 +2,9 @@ import SBSNUI
 
 /// 고객 앱에서 기획에는 있지만 아직 실제 데이터와 연결하지 않은 메뉴(예시 화면, D032). 근거는 총괄 문서 `UI_WIREFRAME_PLAN.md` 1절.
 enum CustomerFeatures {
-    /// 명세 순서(C1~C19). 개발 메뉴의 "예시 화면 전체"가 쓴다.
+    /// 명세 순서(C1~C19, C15 계정 연결은 실제 로그인으로 바뀌어 뺐다). 개발 메뉴의 "예시 화면 전체"가 쓴다.
     static let all = [photographerList, conditions, photographerProfile, briefing, safety, recommendation, basket, review, events,
-                      album, orders, retouch, shareAndPrint, profile, accountLink, help, inquiry, refund, terms]
+                      album, orders, retouch, shareAndPrint, profile, help, inquiry, refund, terms]
 
     // 촬영 탭
     static let photographerList = PlannedFeature(
@@ -53,9 +53,6 @@ enum CustomerFeatures {
     static let profile = PlannedFeature(
         id: "profile", title: "프로필·언어", summary: "이름과 사용 언어를 정하는 화면이 들어갈 자리입니다.",
         plannedItems: ["이름", "사용 언어"], systemImage: "person.text.rectangle")
-    static let accountLink = PlannedFeature(
-        id: "accountLink", title: "계정 연결", summary: "지금의 익명 계정을 로그인 계정에 연결하는 화면이 들어갈 자리입니다.",
-        plannedItems: ["Apple 로그인", "기기 변경 뒤 이어 보기"], systemImage: "person.badge.key")
     static let help = PlannedFeature(
         id: "help", title: "도움말", summary: "자주 묻는 질문과 이용 방법이 들어갈 자리입니다.", systemImage: "questionmark.circle")
     static let inquiry = PlannedFeature(
@@ -65,5 +62,5 @@ enum CustomerFeatures {
         id: "refund", title: "환불·분쟁 요청", summary: "환불이나 분쟁을 요청하는 화면이 들어갈 자리입니다.", systemImage: "arrow.uturn.backward.circle")
     static let terms = PlannedFeature(
         id: "terms", title: "약관·정책", summary: "약관과 동의 내역, 삭제 요청이 들어갈 자리입니다.",
-        plannedItems: ["이용약관", "위치정보 동의", "개인정보 처리방침", "환불 정책", "사진·계정 삭제"], systemImage: "doc.plaintext")
+        plannedItems: ["이용약관", "위치정보 동의", "개인정보 처리방침", "환불 정책", "사진 삭제"], systemImage: "doc.plaintext")
 }

@@ -4,7 +4,7 @@ import SBSNCore
 
 /// 출시 1단계 지도 조회(D059, 웹 `findLaunchPhotographersV1`, asia-northeast3). 익명 세션도 조회할 수 있다.
 ///
-/// sbsn-dev에는 아직 배포 전이라 앱은 개발용 에뮬레이터를 쓸 때만 부른다(`Backend.usesLaunchFeatures`).
+/// 고객 지도는 늘 이 조회로 작가를 보인다(D063). 개발용 에뮬레이터를 쓰면 로컬 함수로 간다(`Backend.functions`).
 public enum LaunchMapService {
     public struct Result: Sendable, Equatable {
         public let photographers: [PublicLocationGrid.MapPhotographer]

@@ -20,7 +20,7 @@ enum PhotographerTab: Hashable {
 /// 작가 앱의 뿌리 화면: 촬영 · 내역 · 마이 탭.
 ///
 /// 업로드·위치는 화면이 아니라 `PhotographerSession.shared`가 돌려서 탭을 바꿔도 끊기지 않는다.
-/// 매칭되면(알림 탭 또는 presence 리스너) 촬영 탭으로 넘어가 티켓 화면을 열고, 촬영이 끝나면 사진 고르기 화면으로 간다.
+/// 매칭되면(매칭 알림) 촬영 탭으로 넘어가 티켓 화면을 열고, 촬영이 끝나면 사진 고르기 화면으로 간다.
 struct ContentView: View {
     @Environment(PhotographerSession.self) private var session
     @State private var path: [PhotographerRoute] = []
@@ -29,8 +29,8 @@ struct ContentView: View {
     var body: some View {
         @Bindable var session = session
         Group {
-            if Backend.usesLaunchFeatures && session.account?.isLinked != true {
-                // 출시 1단계(D051·D059): 작가 앱은 Google·Apple로 로그인한 뒤 쓴다. 개발용 에뮬레이터를 쓸 때만(sbsn-dev는 지금의 익명 MVP 그대로).
+            if session.account?.isLinked != true {
+                // 출시 1단계(D051·D059·D063): 작가 앱은 Google·Apple로 로그인한 뒤 쓴다.
                 SignInSheet(allowsLater: false) { nickname in
                     UserDefaults.standard.set(nickname, forKey: "SBSNLaunchNickname")
                     Task { await session.accountDidChange(nickname: nickname) }

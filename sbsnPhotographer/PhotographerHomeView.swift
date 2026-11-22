@@ -2,13 +2,12 @@ import SBSNCore
 import SBSNUI
 import SwiftUI
 
-/// 작가 "촬영" 탭의 첫 화면: 진행 중인 촬영, 공개 대기 촬영, 이름, "촬영 가능" 토글, 새 요청 설정 자리, 알림·전원 경고.
+/// 작가 "촬영" 탭의 첫 화면: 진행 중인 촬영, 공개 대기 촬영, "촬영 가능" 토글, 새 요청 설정 자리, 알림·전원 경고.
 /// 개발 메뉴는 마이 탭으로 옮겼다(`PhotographerDeveloperPage`).
 struct PhotographerHomeView: View {
     @Environment(PhotographerSession.self) private var session
 
     var body: some View {
-        @Bindable var session = session
         Form {
             if session.ticket == nil, let cancelled = session.cancelledByCustomer {
                 Section {
@@ -57,9 +56,6 @@ struct PhotographerHomeView: View {
             }
 
             Section {
-                TextField("고객에게 보일 이름", text: $session.displayName)
-                    .disabled(session.isAvailable)
-                    .accessibilityIdentifier("photographer.name")
                 Toggle("촬영 가능", isOn: Binding(
                     get: { session.isAvailable },
                     set: { session.setAvailable($0) }
@@ -69,18 +65,13 @@ struct PhotographerHomeView: View {
                 if session.isAvailable {
                     LabeledContent("위치", value: locationText)
                         .accessibilityIdentifier("photographer.location")
-                    if let presence = session.presence, let updatedAt = presence.updatedAt {
-                        LabeledContent("고객 지도에 보이는 시각") {
-                            Text(updatedAt, style: .relative)
-                        }
-                    }
                 }
                 PhotographerSampleLink(PhotographerFeatures.activityArea)
                 PhotographerSampleLink(PhotographerFeatures.breakTime)
             } header: {
                 Text("대기")
             } footer: {
-                Text("켜 두면 앱이 뒤에 있거나 화면이 꺼져도 고객 지도에 내 위치(100m 단위)가 보입니다. 고객이 확정하면 알림이 옵니다. 앱을 쓸어 올려 끄면 위치 공유와 알림 처리가 멈춥니다.")
+                Text("켜 두면 앱이 뒤에 있거나 화면이 꺼져도 고객 지도에 내 위치가 200m 칸 안의 임의 지점으로 보입니다(1분마다 갱신). 앱을 쓸어 올려 끄면 위치 공유가 멈춥니다.")
             }
 
             Section {

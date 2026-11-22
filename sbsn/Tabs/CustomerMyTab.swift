@@ -69,14 +69,11 @@ struct CustomerMyTab: View {
     var body: some View {
         NavigationStack {
             List {
-                if Backend.usesLaunchFeatures {
-                    // 출시 1단계 계정(D059): 개발용 에뮬레이터를 쓸 때만. sbsn-dev는 지금의 익명 MVP 그대로
-                    CustomerAccountSection(showsSignIn: $showsSignIn)
-                } else {
-                    Section("계정") {
-                        CustomerSampleLink(CustomerFeatures.profile)
-                        CustomerSampleLink(CustomerFeatures.accountLink)
-                    }
+                // 출시 1단계 계정(D059·D063)
+                CustomerAccountSection(showsSignIn: $showsSignIn)
+                // 사용 언어는 아직 없어 예시로 남긴다(계정 연결 예시는 실제 로그인으로 바뀌어 지웠다).
+                Section {
+                    CustomerSampleLink(CustomerFeatures.profile)
                 }
                 CustomerPermissionsSection()
                 Section("고객지원") {
