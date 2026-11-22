@@ -13,6 +13,16 @@ struct PublicLocationGridTests {
         let clusterLevelVectors: [ClusterLevelVector]
         /// 카메라 중심 + 자르기 전 화면 경계 → 서버 조회 범위(서비스 밖이면 null)·잘림 여부(웹 0a07a20)
         let queryRectVectors: [QueryRectVector]
+        /// 고객 mm 좌표 + 작가 칸 + 반경 → 활동 반경 안인지(D065, 웹 b4978fa)
+        let radiusVectors: [RadiusVector]
+    }
+
+    struct RadiusVector: Decodable {
+        let name: String
+        let customer: Vector.MM
+        let cellId: String
+        let radiusMeters: Int64
+        let withinRadius: Bool
     }
 
     struct QueryRectVector: Decodable {
@@ -63,6 +73,27 @@ struct PublicLocationGridTests {
         #expect(Self.vectors.vectors.count == 9)
         #expect(Self.vectors.clusterLevelVectors.count == 13)
         #expect(Self.vectors.queryRectVectors.count == 12)
+        #expect(Self.vectors.radiusVectors.count == 5)
+    }
+
+    /// 활동 반경 공통 벡터 5개(정확히 일치): 칸 안 0, 변까지 정확히 반경은 안, 1mm 밖은 밖, 음수 칸 꼭짓점 대각선
+    @Test(arguments: vectors.radiusVectors.map(\.name))
+    func radiusMatchesVector(_ name: String) throws {
+        let vector = try #require(Self.vectors.radiusVectors.first { $0.name == name })
+        let cell = try #require(PublicLocationGrid.Cell(id: vector.cellId))
+        let customer = PublicLocationGrid.ProjectedPoint(eastMm: vector.customer.eastMm, northMm: vector.customer.northMm)
+        #expect(cell.isWithin(radiusMeters: vector.radiusMeters, of: customer) == vector.withinRadius, "\(name)")
+    }
+
+    @Test func cellIdParsingIsStrict() {
+        #expect(PublicLocationGrid.Cell(id: "g1:-2:-3") == PublicLocationGrid.Cell(x: -2, y: -3))
+        #expect(PublicLocationGrid.Cell(id: "g1:0:0") == PublicLocationGrid.Cell(x: 0, y: 0))
+        for bad in ["g1:+1:0", "g1:01:0", "g1:-0:0", "g2:0:0", "g1:0", "g1:0:0:0", "g1: 1:0", "g1::0"] {
+            #expect(PublicLocationGrid.Cell(id: bad) == nil, "\(bad)")
+        }
+        // 칸 안은 거리 0
+        let cell = PublicLocationGrid.Cell(x: 0, y: 0)
+        #expect(cell.distanceSquaredMm(to: .init(eastMm: 1_000_200_000, northMm: 2_000_200_000)) == 0, "닫힌 끝 꼭짓점도 칸 위")
     }
 
     /// 조회 범위 공통 벡터 12개(정확히 일치). 범위가 비면(서비스 밖) 조회하지 않는다.

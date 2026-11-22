@@ -286,5 +286,42 @@
       "query": null,
       "narrowed": false
     }
+  ],
+  "radiusVectors": [
+    {
+      "name": "inside-cell-zero-distance",
+      "customer": {"eastMm": 1000100000, "northMm": 2000100000},
+      "cellId": "g1:0:0",
+      "radiusMeters": 300,
+      "withinRadius": true
+    },
+    {
+      "name": "east-edge-exact-radius",
+      "customer": {"eastMm": 1000500000, "northMm": 2000100000},
+      "cellId": "g1:0:0",
+      "radiusMeters": 300,
+      "withinRadius": true
+    },
+    {
+      "name": "east-edge-one-mm-outside",
+      "customer": {"eastMm": 1000500001, "northMm": 2000100000},
+      "cellId": "g1:0:0",
+      "radiusMeters": 300,
+      "withinRadius": false
+    },
+    {
+      "name": "negative-cell-corner-exact-radius",
+      "customer": {"eastMm": 999980000, "northMm": 1999840000},
+      "cellId": "g1:-2:-3",
+      "radiusMeters": 300,
+      "withinRadius": true
+    },
+    {
+      "name": "negative-cell-corner-one-mm-east-outside",
+      "customer": {"eastMm": 999980001, "northMm": 1999840000},
+      "cellId": "g1:-2:-3",
+      "radiusMeters": 300,
+      "withinRadius": false
+    }
   ]
 }

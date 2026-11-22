@@ -54,8 +54,37 @@ public enum PublicLocationGrid {
             y = PublicLocationGrid.floorDiv(point.northMm - PublicLocationGrid.originNorthMm, PublicLocationGrid.cellSizeMm)
         }
 
+        /// `g1:<x>:<y>`를 읽는다. 표기가 규격과 다르면(양수의 +, 선행 0, -0, 다른 판) nil
+        public init?(id: String) {
+            let parts = id.split(separator: ":", omittingEmptySubsequences: false)
+            guard parts.count == 3, parts[0] == Substring(PublicLocationGrid.version),
+                  let x = Int64(parts[1]), let y = Int64(parts[2])
+            else { return nil }
+            self.init(x: x, y: y)
+            guard self.id == id else { return nil }
+        }
+
         /// `g1:<x>:<y>`(부호 있는 10진수, 양수의 +·선행 0·-0 없음)
         public var id: String { "\(PublicLocationGrid.version):\(x):\(y)" }
+
+        /// 이 칸(시작점부터 200,000mm 끝점까지 닫힌 사각형)에서 `point`까지 최단 거리의 제곱(mm², 64비트 정수). 칸 안이면 0
+        public func distanceSquaredMm(to point: ProjectedPoint) -> Int64 {
+            let start = origin
+            func gap(_ value: Int64, _ low: Int64) -> Int64 {
+                let high = low + PublicLocationGrid.cellSizeMm
+                return value < low ? low - value : (value > high ? value - high : 0)
+            }
+            let dx = gap(point.eastMm, start.eastMm)
+            let dy = gap(point.northMm, start.northMm)
+            return dx * dx + dy * dy
+        }
+
+        /// 고객 좌표가 이 칸에서 `radiusMeters` 안인지(D065 활동 반경). 정확히 반경과 같은 거리도 안이다.
+        /// 고객 좌표는 기기에서만 쓴다(서버에 보내지 않는다).
+        public func isWithin(radiusMeters: Int64, of point: ProjectedPoint) -> Bool {
+            let radiusMm = radiusMeters * 1000
+            return distanceSquaredMm(to: point) <= radiusMm * radiusMm
+        }
 
         /// 칸의 남서쪽 시작점(포함)
         public var origin: ProjectedPoint {
