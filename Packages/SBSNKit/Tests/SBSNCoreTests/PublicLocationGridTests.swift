@@ -9,6 +9,13 @@ struct PublicLocationGridTests {
         let version: Int
         let epsg: Int
         let vectors: [Vector]
+        /// 화면 너비(조회 범위를 자르기 전 여덟 점의 동서 폭, mm) → 묶음 수준(웹 0460041)
+        let clusterLevelVectors: [ClusterLevelVector]
+    }
+
+    struct ClusterLevelVector: Decodable {
+        let visibleWidthMm: Int64
+        let level: Int
     }
 
     struct Vector: Decodable {
@@ -43,6 +50,14 @@ struct PublicLocationGridTests {
     @Test func vectorFileIsV1() {
         #expect(Self.vectors.version == 1 && Self.vectors.epsg == 5179)
         #expect(Self.vectors.vectors.count == 9)
+        #expect(Self.vectors.clusterLevelVectors.count == 13)
+    }
+
+    /// 묶음 수준 공통 벡터 13개(정확히 일치)
+    @Test(arguments: vectors.clusterLevelVectors.map(\.visibleWidthMm))
+    func clusterLevelMatchesVector(_ width: Int64) throws {
+        let vector = try #require(Self.vectors.clusterLevelVectors.first { $0.visibleWidthMm == width })
+        #expect(PublicLocationGrid.clusterLevel(screenWidthMm: width) == vector.level, "폭 \(width)mm")
     }
 
     /// mm 입력에서 칸 번호·표시점·묶음 ID가 벡터와 정확히 같다.

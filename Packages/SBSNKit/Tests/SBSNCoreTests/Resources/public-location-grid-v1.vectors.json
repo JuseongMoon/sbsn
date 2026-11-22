@@ -185,5 +185,20 @@
         "4": "g1:4:0:0"
       }
     }
+  ],
+  "clusterLevelVectors": [
+    {"visibleWidthMm": 0, "level": 0},
+    {"visibleWidthMm": 2000000, "level": 0},
+    {"visibleWidthMm": 2400000, "level": 0},
+    {"visibleWidthMm": 2400001, "level": 1},
+    {"visibleWidthMm": 4800000, "level": 1},
+    {"visibleWidthMm": 4800001, "level": 2},
+    {"visibleWidthMm": 5300000, "level": 2},
+    {"visibleWidthMm": 19200000, "level": 3},
+    {"visibleWidthMm": 19200001, "level": 4},
+    {"visibleWidthMm": 20000000, "level": 4},
+    {"visibleWidthMm": 1228800000, "level": 9},
+    {"visibleWidthMm": 1228800001, "level": 10},
+    {"visibleWidthMm": 2457600001, "level": 10}
   ]
 }
