@@ -25,9 +25,11 @@ public struct MeetupMapSheet: View {
                 .ignoresSafeArea(edges: .bottom)
                 .safeAreaInset(edge: .bottom) { footer }
                 .navigationTitle("위치")
+                #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
+                #endif
                 .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
+                    ToolbarItem(placement: .confirmationAction) {
                         Button("닫기") { dismiss() }
                             .accessibilityIdentifier("meetup.map.close")
                     }

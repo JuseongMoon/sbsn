@@ -44,6 +44,8 @@ let package = Package(
         .testTarget(
             name: "SBSNCoreTests",
             dependencies: ["SBSNCore"],
+            // 공개 위치 격자 v1 공통 시험 벡터(웹 저장소 firebase/docs에서 복사, Android와 같은 파일)
+            resources: [.copy("Resources/public-location-grid-v1.vectors.json")],
             swiftSettings: [
                 .enableUpcomingFeature("ApproachableConcurrency"),
             ],

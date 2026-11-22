@@ -1,0 +1,189 @@
+{
+  "version": 1,
+  "epsg": 5179,
+  "vectors": [
+    {
+      "name": "seoul",
+      "artistUid": "artist-01",
+      "sessionKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "projected": {
+        "eastMm": 953901165,
+        "northMm": 1952032081
+      },
+      "cellId": "g1:-231:-240",
+      "display": {
+        "eastMm": 953815916,
+        "northMm": 1952126463
+      },
+      "clusters": {
+        "0": "g1:0:-231:-240",
+        "2": "g1:2:-58:-60",
+        "4": "g1:4:-15:-15"
+      },
+      "wgs84": {
+        "latitude": 37.5665,
+        "longitude": 126.978
+      }
+    },
+    {
+      "name": "busan",
+      "artistUid": "artist-01",
+      "sessionKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "projected": {
+        "eastMm": 1143467380,
+        "northMm": 1688281982
+      },
+      "cellId": "g1:717:-1559",
+      "display": {
+        "eastMm": 1143452944,
+        "northMm": 1688297472
+      },
+      "clusters": {
+        "0": "g1:0:717:-1559",
+        "2": "g1:2:179:-390",
+        "4": "g1:4:44:-98"
+      },
+      "wgs84": {
+        "latitude": 35.1796,
+        "longitude": 129.0756
+      }
+    },
+    {
+      "name": "jeju",
+      "artistUid": "artist-01",
+      "sessionKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "projected": {
+        "eastMm": 910010546,
+        "northMm": 1501279789
+      },
+      "cellId": "g1:-450:-2494",
+      "display": {
+        "eastMm": 910055236,
+        "northMm": 1501313450
+      },
+      "clusters": {
+        "0": "g1:0:-450:-2494",
+        "2": "g1:2:-113:-624",
+        "4": "g1:4:-29:-156"
+      },
+      "wgs84": {
+        "latitude": 33.4996,
+        "longitude": 126.5312
+      }
+    },
+    {
+      "name": "origin",
+      "artistUid": "artist-01",
+      "sessionKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "projected": {
+        "eastMm": 1000000000,
+        "northMm": 2000000000
+      },
+      "cellId": "g1:0:0",
+      "display": {
+        "eastMm": 1000018972,
+        "northMm": 2000070027
+      },
+      "clusters": {
+        "0": "g1:0:0:0",
+        "2": "g1:2:0:0",
+        "4": "g1:4:0:0"
+      }
+    },
+    {
+      "name": "negative-edge",
+      "artistUid": "artist-01",
+      "sessionKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "projected": {
+        "eastMm": 999999999,
+        "northMm": 1999800000
+      },
+      "cellId": "g1:-1:-1",
+      "display": {
+        "eastMm": 999990647,
+        "northMm": 1999814402
+      },
+      "clusters": {
+        "0": "g1:0:-1:-1",
+        "2": "g1:2:-1:-1",
+        "4": "g1:4:-1:-1"
+      }
+    },
+    {
+      "name": "positive-edge",
+      "artistUid": "artist-01",
+      "sessionKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "projected": {
+        "eastMm": 1000200000,
+        "northMm": 2000199999
+      },
+      "cellId": "g1:1:0",
+      "display": {
+        "eastMm": 1000393283,
+        "northMm": 2000096174
+      },
+      "clusters": {
+        "0": "g1:0:1:0",
+        "2": "g1:2:0:0",
+        "4": "g1:4:0:0"
+      }
+    },
+    {
+      "name": "same-cell",
+      "artistUid": "artist-01",
+      "sessionKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "projected": {
+        "eastMm": 1000199999,
+        "northMm": 2000000001
+      },
+      "cellId": "g1:0:0",
+      "display": {
+        "eastMm": 1000018972,
+        "northMm": 2000070027
+      },
+      "clusters": {
+        "0": "g1:0:0:0",
+        "2": "g1:2:0:0",
+        "4": "g1:4:0:0"
+      }
+    },
+    {
+      "name": "another-session",
+      "artistUid": "artist-01",
+      "sessionKeyHex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "projected": {
+        "eastMm": 1000000000,
+        "northMm": 2000000000
+      },
+      "cellId": "g1:0:0",
+      "display": {
+        "eastMm": 1000167102,
+        "northMm": 2000125874
+      },
+      "clusters": {
+        "0": "g1:0:0:0",
+        "2": "g1:2:0:0",
+        "4": "g1:4:0:0"
+      }
+    },
+    {
+      "name": "another-artist",
+      "artistUid": "artist-02",
+      "sessionKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "projected": {
+        "eastMm": 1000000000,
+        "northMm": 2000000000
+      },
+      "cellId": "g1:0:0",
+      "display": {
+        "eastMm": 1000080009,
+        "northMm": 2000176935
+      },
+      "clusters": {
+        "0": "g1:0:0:0",
+        "2": "g1:2:0:0",
+        "4": "g1:4:0:0"
+      }
+    }
+  ]
+}
