@@ -131,3 +131,14 @@ struct LaunchMatchTests {
         #expect(email.masked == "*@*.**")
     }
 }
+
+/// 공통 시각 표기: 한국 시각 24시간제(기기 설정과 상관없이)
+struct LaunchTimeTests {
+    @Test func koreanTwentyFourHourClock() {
+        // 2026-11-26 05:10 UTC = 14:10 KST
+        let date = Date(timeIntervalSince1970: 1_795_669_800)
+        #expect(LaunchTime.clock(date) == "14:10")
+        #expect(LaunchTime.dayClock(date) == "11월 26일 14:10")
+        #expect(LaunchTime.clock(Date(timeIntervalSince1970: 1_795_669_800 - 14 * 3600)) == "00:10")
+    }
+}

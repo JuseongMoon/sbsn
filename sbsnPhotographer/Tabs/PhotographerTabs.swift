@@ -1,3 +1,4 @@
+import SBSNCore
 import CoreLocation
 import Observation
 import SBSNBackend
@@ -23,8 +24,8 @@ struct PhotographerHistoryTab: View {
                             PublishedGalleryView(ticketID: gallery.ticketID)
                         } label: {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("\(gallery.publishedAt, format: .dateTime.month().day().hour().minute()) 공개 · \(gallery.photoCount)장")
-                                Text("구매 기한 \(gallery.purchaseClosesAt, format: .dateTime.month().day().hour().minute())")
+                                Text("\(LaunchTime.dayClock(gallery.publishedAt)) 공개 · \(gallery.photoCount)장")
+                                Text("구매 기한 \(LaunchTime.dayClock(gallery.purchaseClosesAt))")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }

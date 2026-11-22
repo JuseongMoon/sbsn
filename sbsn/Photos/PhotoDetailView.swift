@@ -85,7 +85,7 @@ struct PhotoDetailView: View {
                 .opacity(workspace.favorites.isPending(photo) ? 0.6 : 1)
                 Spacer()
                 if let capturedAt = photo.capturedAt {
-                    Text(capturedAt, style: .time)
+                    Text(LaunchTime.clock(capturedAt))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

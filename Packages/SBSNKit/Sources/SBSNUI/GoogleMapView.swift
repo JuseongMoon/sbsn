@@ -66,15 +66,21 @@ public struct GoogleMapView: UIViewRepresentable {
     let bottomPadding: CGFloat
     let onUserMove: (() -> Void)?
     let onIdle: ((MapViewport) -> Void)?
+    /// `focusRevision`이 바뀔 때마다 카메라를 이 점으로 옮긴다(예: 첫 내 위치). 0이면 옮기지 않는다.
+    let focus: GeoPoint?
+    let focusRevision: Int
     @Environment(\.colorScheme) private var colorScheme
 
     public init(pins: [MapPin], selection: Binding<String?> = .constant(nil), framing: Int = 0, showsMyLocation: Bool = false,
-                bottomPadding: CGFloat = 0, onUserMove: (() -> Void)? = nil, onIdle: ((MapViewport) -> Void)? = nil) {
+                bottomPadding: CGFloat = 0, focus: GeoPoint? = nil, focusRevision: Int = 0,
+                onUserMove: (() -> Void)? = nil, onIdle: ((MapViewport) -> Void)? = nil) {
         self.pins = pins
         _selection = selection
         self.framing = framing
         self.showsMyLocation = showsMyLocation
         self.bottomPadding = bottomPadding
+        self.focus = focus
+        self.focusRevision = focusRevision
         self.onUserMove = onUserMove
         self.onIdle = onIdle
     }
@@ -109,6 +115,10 @@ public struct GoogleMapView: UIViewRepresentable {
             coordinator.lastFraming = framing
             coordinator.frame(pins: pins, on: mapView)
         }
+        if coordinator.lastFocusRevision != focusRevision, let focus {
+            coordinator.lastFocusRevision = focusRevision
+            mapView.animate(to: GMSCameraPosition(latitude: focus.latitude, longitude: focus.longitude, zoom: max(mapView.camera.zoom, 15)))
+        }
     }
 
     @MainActor
@@ -116,6 +126,7 @@ public struct GoogleMapView: UIViewRepresentable {
         var parent: GoogleMapView
         var markers: [String: GMSMarker] = [:]
         var lastFraming: Int?
+        var lastFocusRevision = 0
         private var lastStyles: [String: MapPin.Style] = [:]
         private var lastSelection: String?
 

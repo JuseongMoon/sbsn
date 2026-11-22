@@ -4,6 +4,7 @@ import FirebaseCore
 import FirebaseFirestore
 import FirebaseFunctions
 import Foundation
+import SBSNCore
 
 /// 출시 1단계 계정(D051·L04~L09, 웹 계약 `firebase/docs/launch-phase-1.md`).
 ///
@@ -173,9 +174,7 @@ public enum AccountService {
             case .delivery:
                 let base = "촬영한 사진을 고객에게 처음 올린 뒤 삭제할 수 있습니다."
                 guard let unlockAt else { return base }
-                let time = unlockAt.formatted(.dateTime.month(.defaultDigits).day().hour().minute()
-                    .locale(Locale(identifier: "ko_KR")))
-                return "\(base) 공개하지 못하면 \(time)부터 삭제할 수 있습니다."
+                return "\(base) 공개하지 못하면 \(LaunchTime.dayClock(unlockAt))부터 삭제할 수 있습니다."
             }
         }
 

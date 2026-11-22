@@ -63,7 +63,7 @@ private struct GalleryRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("\(ticket.photographerDisplayName.isEmpty ? "작가" : ticket.photographerDisplayName) · \(ticket.endedAt?.formatted(.dateTime.month().day().hour().minute()) ?? "")")
+            Text("\(ticket.photographerDisplayName.isEmpty ? "작가" : ticket.photographerDisplayName) · \(ticket.endedAt.map(LaunchTime.dayClock) ?? "")")
             Text(status)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -73,6 +73,6 @@ private struct GalleryRow: View {
     private var status: String {
         guard let closesAt = ticket.galleryPurchaseClosesAt else { return "작가가 사진을 고르는 중" }
         if closesAt < Date() { return "사진 \(ticket.galleryPhotoIds.count)장 · 구매 기한 지남" }
-        return "사진 \(ticket.galleryPhotoIds.count)장 · 구매 기한 \(closesAt.formatted(.dateTime.month().day().hour().minute()))"
+        return "사진 \(ticket.galleryPhotoIds.count)장 · 구매 기한 \(LaunchTime.dayClock(closesAt))"
     }
 }

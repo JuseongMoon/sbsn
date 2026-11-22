@@ -5,19 +5,23 @@
 //  Created by 문주성 on 9/8/26.
 //
 
+import SBSNBackend
+import SBSNCore
 import SBSNUI
 import SwiftUI
 
 /// 고객 앱의 하단 탭.
 enum CustomerTab: Hashable {
     case shoot
+    case chat
     case photos
     case my
 }
 
-/// 고객 앱의 뿌리 화면. 로그인한 뒤 촬영 · 내 사진 · 마이 탭을 보여 준다.
+/// 고객 앱의 뿌리 화면. 촬영 · 채팅 · 내 사진 · 마이 탭(D066 S1).
 ///
-/// 촬영 탭은 활성 티켓이 있으면 티켓 화면, 없으면 작가 지도다. 활성 티켓이 생기면(확정, 서버 잠금 복원) 촬영 탭으로 넘긴다.
+/// 촬영 탭은 출시 티켓(시작 대기·촬영 중)이 있으면 그 티켓 화면, 없으면 작가 지도다. 매칭되면 촬영 탭으로 넘긴다.
+/// 갤러리 v2 전까지 이전 방식 티켓(MVP, `tickets/`)은 그 화면을 그대로 쓴다(3단계에서 바꾼다).
 /// 티켓의 오래 도는 작업은 탭 뷰 배경의 `TicketBackgroundWork`가 맡는다(다른 탭에 있어도 끊기지 않게).
 struct ContentView: View {
     @State private var session = CustomerSession()
@@ -25,6 +29,7 @@ struct ContentView: View {
     @State private var galleries = GalleryStore()
     @State private var selectedTab = CustomerTab.shoot
     @State private var photosPath: [String] = []
+    @State private var launch = CustomerLaunchModel()
     private let router = CustomerNotificationRouter.shared
 
     var body: some View {
@@ -53,7 +58,12 @@ struct ContentView: View {
         .accountDeletionNotice(Binding(get: { session.accountNotice }, set: { session.accountNotice = $0 }))
         .environment(session)
         .environment(galleries)
+        .environment(launch)
         .task { await session.start() }
+        // 출시 대화·신청·티켓은 연결된 계정만 듣는다(규칙). 익명 → 연결은 uid가 같아 계정 판수로 다시 본다.
+        .task(id: "\(session.uid ?? "-")#\(session.accountRevision)") {
+            launch.start(uid: AccountService.current?.isLinked == true ? session.uid : nil)
+        }
         .task(id: session.uid) {
             if let uid = session.uid { await galleries.start(uid: uid) }
         }
@@ -63,7 +73,10 @@ struct ContentView: View {
         let workspace = workspaces.workspace(ticketId: session.activeTicketId, uid: uid)
         return TabView(selection: $selectedTab) {
             Group {
-                if let workspace {
+                if let ticket = launch.activeTicket {
+                    CustomerLaunchTicketView(ticket: ticket)
+                        .id(ticket.id)
+                } else if let workspace {
                     // 티켓이 바뀌면 화면 상태도 새로 만든다.
                     CustomerTicketView(workspace: workspace)
                         .id(workspace.ticketId)
@@ -73,6 +86,11 @@ struct ContentView: View {
             }
             .tabItem { Label("촬영", systemImage: "camera") }
             .tag(CustomerTab.shoot)
+
+            CustomerChatTab()
+                .tabItem { Label("채팅", systemImage: "bubble.left.and.bubble.right") }
+                .badge(launch.totalUnread)
+                .tag(CustomerTab.chat)
 
             MyPhotosTab(selectedTab: $selectedTab, path: $photosPath)
                 .tabItem { Label("내 사진", systemImage: "photo.on.rectangle") }
@@ -92,6 +110,16 @@ struct ContentView: View {
             if ticketId != nil {
                 selectedTab = .shoot
             }
+        }
+        .onChange(of: launch.activeTicket?.id) { _, ticketId in
+            if ticketId != nil {
+                selectedTab = .shoot
+            }
+        }
+        .onChange(of: launch.requestedTab) { _, tab in
+            guard let tab else { return }
+            launch.requestedTab = nil
+            selectedTab = tab
         }
         // 공개 알림을 누르면 그 갤러리로 간다. 진행 중인 촬영이면 촬영 탭이 이미 그 화면이다.
         .onChange(of: router.pendingGalleryTicketID, initial: true) { _, ticketID in

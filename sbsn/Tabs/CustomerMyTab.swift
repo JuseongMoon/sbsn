@@ -11,6 +11,7 @@ import UserNotifications
 struct CustomerAccountSection: View {
     @Binding var showsSignIn: Bool
     @Environment(CustomerSession.self) private var session
+    @Environment(CustomerLaunchModel.self) private var launch
     @State private var account = AccountService.current
     @AppStorage("SBSNLaunchNickname") private var nickname = ""
 
@@ -29,7 +30,9 @@ struct CustomerAccountSection: View {
                 }
                 .accessibilityIdentifier("my.signOut")
                 // 계정 삭제(L10): 서버가 지도·데이터·Auth를 정리한다. 접수되면 익명 둘러보기로 돌아간다.
-                AccountDeletionButton(audience: .customer) { notice in
+                // 진행 중인 신청·촬영이 있으면 막고 그 화면으로 보낸다(D065, 설계 2.6).
+                AccountDeletionButton(audience: .customer, localBlocker: launch.localDeletionBlocker,
+                                      onShowBlocker: { launch.show($0) }) { notice in
                     session.accountNotice = notice
                     await session.reissueAccount()
                     nickname = ""

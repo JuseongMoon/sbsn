@@ -169,10 +169,10 @@ struct GalleryDeadlineText: View {
             TimelineView(.periodic(from: .now, by: 60)) { context in
                 let left = closesAt.timeIntervalSince(context.date)
                 if left <= 0 {
-                    Label("구매 기한이 지났습니다(\(closesAt.formatted(.dateTime.month().day().hour().minute())))", systemImage: "clock.badge.xmark")
+                    Label("구매 기한이 지났습니다(\(LaunchTime.dayClock(closesAt)))", systemImage: "clock.badge.xmark")
                         .foregroundStyle(.secondary)
                 } else {
-                    Label("구매 기한 \(closesAt.formatted(.dateTime.month().day().hour().minute()))까지", systemImage: "clock")
+                    Label("구매 기한 \(LaunchTime.dayClock(closesAt))까지", systemImage: "clock")
                         .foregroundStyle(left < 86_400 ? Color.orange : Color.primary)
                         .fontWeight(left < 86_400 ? .semibold : .regular)
                 }

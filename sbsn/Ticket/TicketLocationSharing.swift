@@ -17,6 +17,8 @@ final class TicketLocationSharing {
 
     let ticketId: String
     let myUid: String
+    /// 출시 2단계 티켓(`launchTickets`)이면 true
+    let launch: Bool
     let authorization = CustomerLocationAuthorization()
 
     /// 나를 뺀 참여자 위치(= 작가)
@@ -29,15 +31,16 @@ final class TicketLocationSharing {
     private var lastPublished: (location: CLLocation, at: Date)?
     private var isPublishing = false
 
-    init(ticketId: String, myUid: String) {
+    init(ticketId: String, myUid: String, launch: Bool = false) {
         self.ticketId = ticketId
         self.myUid = myUid
+        self.launch = launch
     }
 
     func listenToOthers() async {
         listenError = nil
         do {
-            for try await samples in TicketLocationService.locations(ticketId: ticketId) {
+            for try await samples in TicketLocationService.locations(ticketId: ticketId, launch: launch) {
                 others = samples.filter { $0.uid != myUid }
             }
         } catch {
@@ -89,7 +92,7 @@ final class TicketLocationSharing {
         isPublishing = true
         defer { isPublishing = false }
         do {
-            try await TicketLocationService.publish(ticketId: ticketId, uid: myUid, point: SBSNCore.GeoPoint(location.coordinate))
+            try await TicketLocationService.publish(ticketId: ticketId, uid: myUid, point: SBSNCore.GeoPoint(location.coordinate), launch: launch)
             lastPublished = (location, Date())
             publishError = nil
         } catch {

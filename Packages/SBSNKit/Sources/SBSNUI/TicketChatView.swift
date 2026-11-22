@@ -85,7 +85,7 @@ public struct TicketChatView: View {
                     .padding(.vertical, 8)
                     .background(isMine ? Color.accentColor.opacity(0.9) : Color.secondary.opacity(0.15), in: RoundedRectangle(cornerRadius: 14))
                     .foregroundStyle(isMine ? .white : .primary)
-                Text(message.sentAt.map { $0.formatted(date: .omitted, time: .shortened) } ?? "보내는 중")
+                Text(message.sentAt.map { LaunchTime.clock($0) } ?? "보내는 중")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

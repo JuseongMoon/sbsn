@@ -82,7 +82,7 @@ struct PhotoSelectionView: View {
         Section {
             VStack(alignment: .leading, spacing: 4) {
                 if let start = model.shootStartedAt, let end = model.ticket.endedAt {
-                    Text("촬영 \(start, format: .dateTime.hour().minute())~\(end, format: .dateTime.hour().minute())")
+                    Text("촬영 \(LaunchTime.clock(start))~\(LaunchTime.clock(end))")
                         .font(.headline)
                     Text("종료 \(end, style: .relative) 지남")
                         .font(.caption)
@@ -194,7 +194,7 @@ struct PhotoSelectionView: View {
             case .publishing:
                 ProgressView("공개하는 중…")
             case .published(let date):
-                Label("공개했습니다\(date.map { " · \($0.formatted(.dateTime.hour().minute()))" } ?? "")", systemImage: "checkmark.seal.fill")
+                Label("공개했습니다\(date.map { " · \(LaunchTime.clock($0))" } ?? "")", systemImage: "checkmark.seal.fill")
                     .foregroundStyle(.green)
                     .accessibilityIdentifier("gallery.published")
             }
@@ -335,8 +335,8 @@ struct PublishedGalleryView: View {
         List {
             if let ticket, let publishedAt = ticket.galleryPublishedAt, let closesAt = ticket.galleryPurchaseClosesAt {
                 Section {
-                    LabeledContent("공개", value: publishedAt.formatted(.dateTime.month().day().hour().minute()))
-                    LabeledContent("구매 기한", value: closesAt.formatted(.dateTime.month().day().hour().minute()))
+                    LabeledContent("공개", value: LaunchTime.dayClock(publishedAt))
+                    LabeledContent("구매 기한", value: LaunchTime.dayClock(closesAt))
                 }
                 Section("사진 \(ticket.galleryPhotoIds.count)장") {
                     ForEach(Array(ticket.galleryPhotoIds.enumerated()), id: \.element) { index, photoID in

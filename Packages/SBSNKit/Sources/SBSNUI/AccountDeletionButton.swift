@@ -35,19 +35,35 @@ public struct AccountDeletionButton: View {
     public static let acceptedNotice = "삭제 요청을 받았습니다. 늦어도 24시간 안에 마칩니다."
 
     let audience: Audience
+    let localBlocker: AccountService.DeletionBlocked?
+    let onShowBlocker: ((AccountService.DeletionBlocked) -> Void)?
     let onRequested: (_ notice: String) async -> Void
     @State private var confirming = false
     @State private var isWorking = false
     @State private var message: String?
+    @State private var blocker: AccountService.DeletionBlocked?
 
     /// `onRequested`: 삭제를 접수하고 완료 여부를 본 뒤. 앱은 `notice`를 화면 뿌리에 띄우고 로그아웃해 둘러보기·로그인 관문으로 돌아간다.
-    public init(audience: Audience, onRequested: @escaping (_ notice: String) async -> Void) {
+    /// `localBlocker`: 앱이 이미 아는 진행 중인 건(신청·티켓). 있으면 서버를 부르기 전에(Apple 재인증 전에) 막는다(설계 2.6).
+    /// `onShowBlocker`: [진행 중인 촬영 보기]·[사진 올리러 가기]를 누르면 그 신청의 대화방·티켓을 연다.
+    public init(audience: Audience, localBlocker: AccountService.DeletionBlocked? = nil,
+                onShowBlocker: ((AccountService.DeletionBlocked) -> Void)? = nil,
+                onRequested: @escaping (_ notice: String) async -> Void) {
         self.audience = audience
+        self.localBlocker = localBlocker
+        self.onShowBlocker = onShowBlocker
         self.onRequested = onRequested
     }
 
     public var body: some View {
-        Button("계정 삭제", role: .destructive) { confirming = true }
+        Button("계정 삭제", role: .destructive) {
+            if let localBlocker {
+                blocker = localBlocker
+                message = nil
+            } else {
+                confirming = true
+            }
+        }
             .disabled(isWorking)
             .accessibilityIdentifier("my.deleteAccount")
             .alert("계정을 삭제할까요?", isPresented: $confirming) {
@@ -62,7 +78,18 @@ public struct AccountDeletionButton: View {
         if isWorking {
             ProgressView()
         }
-        if let message {
+        if let blocker {
+            Text(blocker.errorDescription ?? "")
+                .font(.footnote)
+                .foregroundStyle(.red)
+                .accessibilityIdentifier("my.deleteAccount.error")
+            if let onShowBlocker {
+                Button(blocker.kind == .delivery ? "사진 올리러 가기" : "진행 중인 촬영 보기") {
+                    onShowBlocker(blocker)
+                }
+                .accessibilityIdentifier("my.deleteAccount.blocker")
+            }
+        } else if let message {
             Text(message)
                 .font(.footnote)
                 .foregroundStyle(.red)
@@ -73,6 +100,7 @@ public struct AccountDeletionButton: View {
     private func delete() async {
         isWorking = true
         message = nil
+        blocker = nil
         defer { isWorking = false }
         do {
             var appleCode: String?
@@ -87,6 +115,8 @@ public struct AccountDeletionButton: View {
                 completed = await AccountService.waitForDeletionCompleted(uid: uid)
             }
             await onRequested(completed ? Self.completedNotice : Self.acceptedNotice)
+        } catch let blocked as AccountService.DeletionBlocked {
+            blocker = blocked
         } catch let error as ASAuthorizationError where error.code == .canceled {
             message = "Apple 재인증을 취소했습니다."
         } catch {

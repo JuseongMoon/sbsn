@@ -6,7 +6,8 @@ import SwiftUI
 /// 촬영 가능한 작가를 지도에서 보는 화면("촬영" 탭, 활성 티켓이 없을 때).
 ///
 /// 출시 1단계 지도(D059·D063): 지도가 멈출 때와 60초마다 `LaunchMapService`로 조회해 작가 표시점·묶음을 Google 지도에 그린다(D051·L30).
-/// 작가를 골라 매칭하는 카드·확정은 2단계 매칭 때 다시 만든다(D063으로 MVP 핀·확정 UI를 지웠다).
+/// 2단계(설계 2.2): 작가 핀을 누르면 아래 카드(상태·휴게·활동 범위 밖·추천 시간)와 [채팅하기]. 신청은 대화방에서 한다.
+/// 반경 판정은 고객 위치로 기기에서 한다(D065, 위치는 서버로 보내지 않는다).
 /// 고객이 위치 권한을 거부해도 지도와 작가 핀은 보여야 하므로 처음 화면은 서울 시청 근처다.
 struct PhotographerMapView: View {
     @Environment(CustomerSession.self) private var session
@@ -18,6 +19,16 @@ struct PhotographerMapView: View {
     /// 출시 지도: 마지막으로 멈춘 화면과 조회 결과
     @State private var lastViewport: MapViewport?
     @State private var launchMap: LaunchMapState?
+    @State private var location = CustomerLocationReader.shared
+    @State private var openRoomId: String?
+    @State private var showsSignIn = false
+    @State private var isOpeningChat = false
+    @AppStorage("SBSNLaunchNickname") private var nickname = ""
+    /// 첫 내 위치로 카메라를 한 번 옮겼는지, 사용자가 손으로 지도를 움직였는지(그러면 옮기지 않는다, 총괄 공통 기준·Android f7f379e)
+    @State private var centeredOnce = false
+    @State private var userMoved = false
+    @State private var focus: GeoPoint?
+    @State private var focusRevision = 0
 
     /// 출시 지도 조회 결과를 묶은 것
     struct LaunchMapState: Equatable {
@@ -54,16 +65,117 @@ struct PhotographerMapView: View {
             .toolbar { plannedMenus }
             .task { authorization.requestWhenInUseIfNeeded() }
             .task { await refreshLaunchMapPeriodically() }
+            .task { await location.track() }
+            .navigationDestination(item: $openRoomId) { roomId in
+                CustomerChatRoomScreen(roomId: roomId)
+            }
+            .sheet(isPresented: $showsSignIn) {
+                SignInSheet(allowsLater: true) { name in
+                    nickname = name
+                    let artist = selectedPhotographer?.uid
+                    Task {
+                        await session.accountDidChange()
+                        if let artist { await openChat(artistUid: artist) }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - 작가 카드(2단계)
+
+    /// 누른 핀의 작가(한 명짜리 핀만)
+    private var selectedPhotographer: PublicLocationGrid.MapPhotographer? {
+        guard let selectedUid, let launchMap else { return nil }
+        return launchMap.clusters.compactMap(\.single).first { "launch.\($0.uid)" == selectedUid }
+    }
+
+    private func statusLine(_ photographer: PublicLocationGrid.MapPhotographer) -> String {
+        if let code = photographer.breakReason {
+            return "휴게 중 · \(LaunchMatch.BreakReason(rawValue: code)?.label ?? "잠시 휴식")"
+        }
+        if photographer.isWithinRadius(of: location.projected) == false {
+            return CustomerRequestEligibility.outOfRangeText(photographer.radiusMeters)
+        }
+        if let end = photographer.availabilityEndsAt {
+            return "촬영 가능 · \(LaunchTime.clock(end))까지"
+        }
+        return "촬영 가능"
+    }
+
+    private func photographerCard(_ photographer: PublicLocationGrid.MapPhotographer) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(photographer.nickname)
+                    .font(.headline)
+                Spacer()
+                Button {
+                    selectedUid = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                }
+                .accessibilityLabel("닫기")
+            }
+            Text(statusLine(photographer))
+                .font(.subheadline)
+                .foregroundStyle(photographer.breakReason == nil && photographer.isWithinRadius(of: location.projected) != false
+                                 ? Color.primary : Color.orange)
+                .accessibilityIdentifier("map.card.status")
+            if let minutes = photographer.recommendedShootMinutes {
+                Text("추천 \(minutes)분")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Button {
+                if AccountService.current?.isLinked == true {
+                    Task { await openChat(artistUid: photographer.uid) }
+                } else {
+                    showsSignIn = true
+                }
+            } label: {
+                Text("채팅하기").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isOpeningChat)
+            .accessibilityIdentifier("map.card.chat")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("map.card")
+    }
+
+    private func openChat(artistUid: String) async {
+        isOpeningChat = true
+        defer { isOpeningChat = false }
+        do {
+            openRoomId = try await LaunchMatchService.openConversation(artistUid: artistUid)
+            mapError = nil
+        } catch {
+            mapError = "대화방을 열지 못했습니다: \(error.localizedDescription)"
         }
     }
 
     /// Google 지도(D051·L30, 맵 ID 없음). 출시 지도 조회 결과(표시점·묶음)를 그린다(Android 3057de3과 같은 기준).
     private var map: some View {
         GoogleMapView(pins: launchPins, selection: $selectedUid, showsMyLocation: true,
+                      focus: focus, focusRevision: focusRevision,
+                      onUserMove: { userMoved = true },
                       onIdle: { viewport in
                           lastViewport = viewport
+                          // 첫 위치를 기다리는 동안은 서울 기본 화면을 조회하지 않는다("없습니다"가 먼저 뜨지 않게).
+                          guard !waitingForFirstLocation else { return }
                           Task { await queryLaunchMap(viewport) }
                       })
+        .onChange(of: location.latest == nil, initial: true) { _, isMissing in
+            guard !isMissing, !centeredOnce, !userMoved, let latest = location.latest else { return }
+            centeredOnce = true
+            focus = GeoPoint(latitude: latest.coordinate.latitude, longitude: latest.coordinate.longitude)
+            focusRevision += 1
+        }
+        .onChange(of: waitingForFirstLocation) { _, waiting in
+            // 권한을 거부했거나 사용자가 지도를 움직이면 기다리지 않고 지금 화면을 조회한다.
+            guard !waiting, let lastViewport else { return }
+            Task { await queryLaunchMap(lastViewport) }
+        }
         .overlay(alignment: .top) {
             if launchMap?.narrowed == true {
                 Text("확대하면 더 보입니다")
@@ -137,18 +249,33 @@ struct PhotographerMapView: View {
 
     // MARK: - 하단 패널
 
+    /// 첫 내 위치를 기다리는 중(권한 묻기 전이거나 허용했는데 아직 위치가 없다). 사용자가 지도를 움직이면 끝난다. 시간 제한은 없다.
+    private var waitingForFirstLocation: Bool {
+        guard !centeredOnce, !userMoved, !authorization.isDenied else { return false }
+        return authorization.isAuthorized || authorization.status == .notDetermined
+    }
+
+    /// 첫 조회가 끝나기 전(또는 첫 위치를 기다리는 중)이면 "찾는 중"
+    private var showsSearching: Bool {
+        mapError == nil && (waitingForFirstLocation || launchMap == nil)
+    }
+
     /// 조회 결과가 비었다(서비스 범위 밖 포함). 화면이 넓어 가운데만 조회했으면 다른 곳에 있을 수 있어 말하지 않는다.
     private var showsNoPhotographers: Bool {
-        guard let launchMap else { return false }
+        guard !showsSearching, let launchMap else { return false }
         return launchMap.clusters.isEmpty && !launchMap.narrowed
     }
 
     private var hasBottomPanel: Bool {
-        session.lockWarning != nil || mapError != nil || authorization.isDenied || showsNoPhotographers
+        selectedPhotographer != nil || session.lockWarning != nil || mapError != nil || authorization.isDenied
+            || showsNoPhotographers || showsSearching
     }
 
     private var bottomPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if let photographer = selectedPhotographer {
+                photographerCard(photographer)
+            }
             if let warning = session.lockWarning {
                 Text(warning)
                     .font(.caption)
@@ -171,6 +298,16 @@ struct PhotographerMapView: View {
                 Text("위치 권한이 없어 내 위치는 보이지 않습니다. 지도를 움직여 작가를 찾아 주세요.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+            if showsSearching {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("주변 작가를 찾는 중")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("map.searching")
             }
             if showsNoPhotographers {
                 Label("주변에 촬영 가능한 작가가 없습니다", systemImage: "camera.metering.none")

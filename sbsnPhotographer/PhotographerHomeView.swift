@@ -16,7 +16,7 @@ struct PhotographerHomeView: View {
                             .font(.headline)
                             .foregroundStyle(.orange)
                         if let cancelledAt = cancelled.cancelledAt {
-                            Text("\(cancelledAt, format: .dateTime.hour().minute()) 취소 · 매칭 \(cancelled.createdAt, format: .dateTime.hour().minute())")
+                            Text("\(LaunchTime.clock(cancelledAt)) 취소 · 매칭 \(LaunchTime.clock(cancelled.createdAt))")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -148,7 +148,7 @@ private struct PendingGalleryRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             if let endedAt = model.ticket.endedAt {
-                Text("\(endedAt, format: .dateTime.hour().minute()) 종료 촬영")
+                Text("\(LaunchTime.clock(endedAt)) 종료 촬영")
                     .font(.headline)
             }
             Text(statusText)

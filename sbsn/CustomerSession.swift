@@ -32,6 +32,8 @@ final class CustomerSession {
     private(set) var debugMessage: String?
     /// 계정 삭제 뒤 한 번 보이는 알림(로그아웃 뒤 마이 탭 위에 띄운다. 다음 실행 때 다시 알리지 않는다)
     var accountNotice: String?
+    /// 로그인·연결·로그아웃마다 오른다. 익명 → 연결은 uid가 같아 이것으로 출시 리스너를 다시 붙인다.
+    private(set) var accountRevision = 0
 
     /// 사용자가 "지도로 돌아가기"로 떠난 티켓. 서버 잠금 해제가 아직 반영되지 않았어도 지도로 갈 수 있게 한다.
     private var dismissedTicketId: String?
@@ -131,6 +133,7 @@ final class CustomerSession {
     /// 로그인으로 계정이 바뀌었을 때 리스너를 새 uid로 다시 붙인다(연결은 uid가 같고, 이미 있던 계정으로 로그인하면 바뀐다).
     /// 탭 화면을 "로그인 중"으로 내리지 않고 uid와 리스너만 바꾼다(내렸다 올리면 화면이 깜빡이고 그 사이 누른 단추가 사라진다).
     func accountDidChange() async {
+        accountRevision += 1
         guard let current = AccountService.current?.uid, current != uid else { return }
         lockTask?.cancel()
         lockTask = nil
@@ -153,6 +156,7 @@ final class CustomerSession {
     // MARK: - 내부
 
     private func signIn() async {
+        accountRevision += 1
         phase = .signingIn
         do {
             let uid = try await Backend.signedInUserID()
