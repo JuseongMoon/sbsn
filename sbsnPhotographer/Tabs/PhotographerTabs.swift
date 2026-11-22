@@ -57,6 +57,7 @@ struct PhotographerHistoryTab: View {
 /// 작가 앱은 처음부터 로그인하므로 "로그인" 단추가 없다. 로그아웃·삭제하면 로그인 화면으로 돌아간다.
 struct PhotographerAccountSection: View {
     @Environment(PhotographerSession.self) private var session
+    @Environment(PhotographerLaunchModel.self) private var launch
     @AppStorage("SBSNLaunchNickname") private var nickname = ""
 
     var body: some View {
@@ -71,7 +72,9 @@ struct PhotographerAccountSection: View {
                 }
             }
             .accessibilityIdentifier("my.signOut")
-            AccountDeletionButton(audience: .photographer) { notice in
+            // 진행 중인 신청·촬영이 있으면 막고 그 화면으로 보낸다(D065, 설계 2.6).
+            AccountDeletionButton(audience: .photographer, localBlocker: launch.localDeletionBlocker,
+                                  onShowBlocker: { launch.show($0) }) { notice in
                 session.accountNotice = notice
                 await session.resetAnonymousAccount()
                 nickname = ""

@@ -369,7 +369,29 @@ final class PhotographerSession {
     }
 
     /// "촬영 가능"을 켜고 끈다. 켜면 위치·알림 권한을 묻고, 출시 발행기가 위치가 오는 대로 공개 위치를 발행한다.
-    func setAvailable(_ available: Bool) {
+    /// 지난번 촬영 가능 설정(처음이면 1km·2시간). 켜기 시트의 기본값이다.
+    var lastAvailabilitySettings: LaunchPresencePublisher.Settings {
+        let stored = UserDefaults.standard.data(forKey: Self.lastSettingsKey)
+            .flatMap { try? JSONDecoder().decode(LaunchPresencePublisher.Settings.self, from: $0) }
+        let hours = UserDefaults.standard.object(forKey: Self.lastHoursKey) as? Double ?? 2
+        return .init(radiusMeters: stored?.radiusMeters ?? 1000, endsAt: Date().addingTimeInterval(hours * 3600), breakReason: nil)
+    }
+
+    static let lastSettingsKey = "SBSNLaunchLastAvailabilitySettings"
+    static let lastHoursKey = "SBSNLaunchLastAvailabilityHours"
+
+    /// 켠 채로 반경·끝 시각·휴게를 바꾼다(설계 2.3). 실패하면 서버 문구를 보인다.
+    func updateAvailability(_ settings: LaunchPresencePublisher.Settings) async {
+        guard let uid else { return }
+        do {
+            try await launchPublisher.update(uid: uid, settings: settings)
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func setAvailable(_ available: Bool, settings: LaunchPresencePublisher.Settings? = nil) {
         guard let uid else { return }
         if available {
             guard ticket == nil else {
@@ -381,8 +403,12 @@ final class PhotographerSession {
             errorMessage = nil
             location.start()
             requestNotificationAuthorizationIfNeeded()
-            // 출시 1단계 공개 위치(D059): 켜는 순간 새 세션으로 소유권을 가져오고 60초마다 표시점을 발행한다.
-            launchPublisher.turnOn(uid: uid)
+            // 출시 공개 위치(D059): 켜는 순간 새 세션으로 소유권을 가져오고 60초마다 표시점을 발행한다. 반경·끝 시각은 2단계(W5).
+            let settings = settings ?? lastAvailabilitySettings
+            if let data = try? JSONEncoder().encode(settings) {
+                UserDefaults.standard.set(data, forKey: Self.lastSettingsKey)
+            }
+            launchPublisher.turnOn(uid: uid, settings: settings)
         } else {
             isAvailable = false
             UserDefaults.standard.set(false, forKey: Self.availableKey)

@@ -269,6 +269,9 @@ final class LaunchArtistUITests: XCTestCase {
         // SwiftUI Toggle은 행 전체가 아니라 오른쪽 스위치를 눌러야 바뀐다.
         let knob = toggle.switches.firstMatch.exists ? toggle.switches.firstMatch : toggle
         knob.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        // 2단계: 켤 때는 거리·끝 시각 시트를 거친다(기본값 그대로 켠다).
+        let turnOn = XCUIApplication(bundleIdentifier: "com.ScienceFiction.sbsnPhotographer").buttons["availability.on"]
+        if turnOn.waitForExistence(timeout: 2) { turnOn.tap() }
     }
 
     private func waitUntil(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
@@ -397,6 +400,12 @@ struct EmulatorAdmin {
 extension Dictionary where Key == String, Value == Any {
     func string(_ field: String) -> String? {
         (self[field] as? [String: Any])?["stringValue"] as? String
+    }
+
+    /// Firestore REST 정수(`integerValue`는 문자열로 온다)
+    func int(_ field: String) -> Int? {
+        let value = self[field] as? [String: Any]
+        return (value?["integerValue"] as? String).flatMap(Int.init) ?? (value?["doubleValue"] as? Double).map { Int($0) }
     }
 
     func timestamp(_ field: String) -> Date? {

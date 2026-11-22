@@ -6,6 +6,10 @@ import SwiftUI
 /// 개발 메뉴는 마이 탭으로 옮겼다(`PhotographerDeveloperPage`).
 struct PhotographerHomeView: View {
     @Environment(PhotographerSession.self) private var session
+    @Environment(PhotographerLaunchModel.self) private var launch
+    @State private var showsTurnOn = false
+    @State private var showsChange = false
+    @State private var choosesBreak = false
 
     var body: some View {
         Form {
@@ -56,30 +60,56 @@ struct PhotographerHomeView: View {
             }
 
             Section {
+                // 켜면 거리·끝 시각 시트를 거친다(설계 2.3). 끄면 바로 끈다.
                 Toggle("촬영 가능", isOn: Binding(
                     get: { session.isAvailable },
-                    set: { session.setAvailable($0) }
+                    set: { on in
+                        if on { showsTurnOn = true } else { session.setAvailable(false) }
+                    }
                 ))
                 .disabled(!session.isAvailable && !session.canGoAvailable)
                 .accessibilityIdentifier("photographer.available")
                 if session.isAvailable {
+                    if let settings = session.launchPublisher.settings {
+                        Text(statusText(settings))
+                            .accessibilityIdentifier("home.status")
+                        HStack {
+                            Button("변경") { showsChange = true }
+                                .accessibilityIdentifier("availability.change")
+                            Spacer()
+                            if settings.breakReason == nil {
+                                Button("휴게") { choosesBreak = true }
+                                    .accessibilityIdentifier("break.start")
+                            } else {
+                                Button("휴게 끝내기") {
+                                    var next = settings
+                                    next.breakReason = nil
+                                    Task { await session.updateAvailability(next) }
+                                }
+                                .accessibilityIdentifier("break.end")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                    }
                     LabeledContent("위치", value: locationText)
                         .accessibilityIdentifier("photographer.location")
                 }
-                PhotographerSampleLink(PhotographerFeatures.activityArea)
-                PhotographerSampleLink(PhotographerFeatures.breakTime)
             } header: {
                 Text("대기")
             } footer: {
                 Text("켜 두면 앱이 뒤에 있거나 화면이 꺼져도 고객 지도에 내 위치가 200m 칸 안의 임의 지점으로 보입니다(1분마다 갱신). 앱을 쓸어 올려 끄면 위치 공유가 멈춥니다.")
             }
 
-            Section {
-                PhotographerSampleLink(PhotographerFeatures.requestPolicy)
-            } header: {
-                Text("새 요청")
-            } footer: {
-                Text("지금은 고객이 확정하면 바로 매칭됩니다.")
+            let waiting = launch.waitingRequests()
+            if !waiting.isEmpty {
+                Section("새 신청(\(waiting.count))") {
+                    ForEach(waiting) { request in
+                        PhotographerRequestCard(request: request) {
+                            launch.chatPath = [request.roomId]
+                            launch.requestedTab = .chat
+                        }
+                    }
+                }
             }
 
             if !warnings.isEmpty {
@@ -100,6 +130,27 @@ struct PhotographerHomeView: View {
             }
         }
         .navigationTitle("십분스냅 작가")
+        .sheet(isPresented: $showsTurnOn) {
+            AvailabilitySheet(mode: .turnOn, initial: session.lastAvailabilitySettings) { settings in
+                session.setAvailable(true, settings: settings)
+            }
+        }
+        .sheet(isPresented: $showsChange) {
+            AvailabilitySheet(mode: .change, initial: session.launchPublisher.settings ?? session.lastAvailabilitySettings) { settings in
+                Task { await session.updateAvailability(settings) }
+            }
+        }
+        .modifier(BreakReasonDialog(isPresented: $choosesBreak) { reason in
+            guard var settings = session.launchPublisher.settings else { return }
+            settings.breakReason = reason.rawValue
+            Task { await session.updateAvailability(settings) }
+        })
+    }
+
+    /// "촬영 가능 · 1km · 18:00까지" 또는 "휴게 중 · 식사 · 1km · 18:00까지"
+    private func statusText(_ settings: LaunchPresencePublisher.Settings) -> String {
+        let head = settings.breakReasonValue.map { "휴게 중 · \($0.label)" } ?? "촬영 가능"
+        return "\(head) · \(LaunchMatch.radiusLabel(settings.radiusMeters)) · \(LaunchTime.clock(settings.endsAt))까지"
     }
 
     private var locationText: String {

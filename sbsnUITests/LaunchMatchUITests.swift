@@ -25,6 +25,8 @@ final class LaunchMatchUITests: XCTestCase {
         let toggle = photographerApp.switches["photographer.available"].firstMatch
         XCTAssertTrue(toggle.waitForExistence(timeout: 20))
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        XCTAssertTrue(photographerApp.buttons["availability.on"].waitForExistence(timeout: 5), "켜기 시트가 없음")
+        photographerApp.buttons["availability.on"].tap()
         dismissNotificationPrompt()
         let published = try await waitFor("publicPhotographers/\(artist.uid)", timeout: 90)
         XCTAssertTrue(published, "작가 발행이 지도에 없음")
@@ -141,7 +143,116 @@ final class LaunchMatchUITests: XCTestCase {
         }
     }
 
+    /// 작가 화면(설계 2.3·2.5): 켜기 시트 → 새 신청 카드 → 사유 거절(누르면 바로) → 수락 → 시작 → 연장 동의 → 작가 종료 → 휴게 → 채팅 탭
+    func test_L9_photographerRequestsToEnd() async throws {
+        let artist = try await admin.createTestAccount(prefix: "artist")
+        let app = photographerApp
+        app.launchArguments = ["-SBSNEmulatorHost", host]
+        app.launch()
+        try signIn(at: app, gate: true, account: artist)
+        try await admin.setDocument("launchArtistRoles/\(artist.uid)", fields: ["approved": ["booleanValue": true]])
+        app.tabBars.buttons["촬영"].tap()
+        let toggle = app.switches["photographer.available"].firstMatch
+        XCTAssertTrue(toggle.waitForExistence(timeout: 20))
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        XCTAssertTrue(app.buttons["availability.on"].waitForExistence(timeout: 5), "켜기 시트가 없음")
+        app.buttons["availability.on"].tap()
+        dismissNotificationPrompt()
+        let status = app.staticTexts["home.status"]
+        XCTAssertTrue(status.waitForExistence(timeout: 20), "상태 줄이 없음")
+        print("SBSN 작가 상태: \(status.label)")
+        XCTAssertTrue(status.label.hasPrefix("촬영 가능 · 1km · "))
+        let device = try await admin.document("launchDevices/\(artist.uid)")
+        XCTAssertEqual(device?.int("radiusMeters"), 1000, "반경이 서버에 없음")
+
+        // 고객(REST): 프로필 → 방 → 신청
+        let customer = try await admin.createTestAccount(prefix: "customer")
+        let customerToken = try await admin.idToken(email: customer.email, password: customer.password)
+        _ = try await admin.call("saveLaunchProfileV1", idToken: customerToken, data: ["age14Confirmed": true, "nickname": "고객1"])
+        let (_, opened) = try await admin.call("openLaunchConversationV1", idToken: customerToken, data: ["artistUid": artist.uid])
+        let roomId = try XCTUnwrap((opened["result"] as? [String: Any])?["roomId"] as? String)
+        func request(_ minutes: Int) async throws -> String {
+            let (code, body) = try await admin.call("requestLaunchMatchV1", idToken: customerToken,
+                                                    data: ["roomId": roomId, "minutes": minutes, "clientRequestId": UUID().uuidString.lowercased()])
+            XCTAssertEqual(code, 200, "\(body)")
+            return try XCTUnwrap((body["result"] as? [String: Any])?["requestId"] as? String)
+        }
+
+        // 거절: 보기를 누르면 바로 거절된다.
+        let first = try await request(30)
+        let card = app.descendants(matching: .any)["request.card"].firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 20), "새 신청 카드가 없음")
+        XCTAssertTrue(app.staticTexts["고객1 · 30분"].exists, "고객 닉네임·분이 카드에 없음")
+        app.buttons["request.decline"].firstMatch.tap()
+        app.buttons["decline.reason.too_far"].firstMatch.tap()
+        XCTAssertTrue(waitUntil(timeout: 15) { !card.exists }, "거절 뒤 카드가 남음")
+        let declined = try await admin.document("launchMatchRequests/\(first)")
+        XCTAssertEqual(declined?.string("status"), "declined")
+        XCTAssertEqual(declined?.string("declineReason"), "too_far")
+
+        // 수락 → 티켓(시작 대기) → 양쪽 시작
+        let second = try await request(20)
+        XCTAssertTrue(app.buttons["request.accept"].firstMatch.waitForExistence(timeout: 20))
+        app.buttons["request.accept"].firstMatch.tap()
+        let start = app.buttons["ticket.start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 20), "수락 뒤 티켓 화면이 아님")
+        _ = try await admin.call("updateLaunchShootingV1", idToken: customerToken, data: ["ticketId": second, "action": "start"])
+        XCTAssertTrue(app.staticTexts["ticket.otherStarted"].waitForExistence(timeout: 15), "고객 시작이 보이지 않음")
+        start.tap()
+        app.buttons["ticket.start.confirm"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["ticket.remaining"].waitForExistence(timeout: 20), "촬영 중 화면이 아님")
+
+        // 연장 동의
+        _ = try await admin.call("requestLaunchExtensionV1", idToken: customerToken,
+                                 data: ["ticketId": second, "clientRequestId": UUID().uuidString.lowercased()])
+        XCTAssertTrue(app.buttons["extension.accept"].waitForExistence(timeout: 20), "연장 카드가 없음")
+        app.buttons["extension.accept"].tap()
+        XCTAssertTrue(waitUntil(timeout: 15) { !app.buttons["extension.accept"].exists })
+        let extended = try await admin.document("launchTickets/\(second)")
+        XCTAssertEqual(extended?.int("extensionMinutes"), 5)
+
+        // 작가 종료 → 홈
+        app.buttons["ticket.end"].tap()
+        app.buttons["ticket.end.confirm"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["home.status"].waitForExistence(timeout: 20), "종료 뒤 홈이 아님")
+        let ended = try await admin.document("launchTickets/\(second)")
+        XCTAssertEqual(ended?.string("endedByRole"), "photographer")
+
+        // 휴게 → 신청 거부 → 휴게 끝
+        app.buttons["break.start"].tap()
+        app.buttons["break.reason.meal"].firstMatch.tap()
+        XCTAssertTrue(waitUntil(timeout: 15) { app.staticTexts["home.status"].label.hasPrefix("휴게 중 · 식사") }, "휴게 상태가 아님")
+        let (onBreak, _) = try await admin.call("requestLaunchMatchV1", idToken: customerToken,
+                                                data: ["roomId": roomId, "minutes": 20, "clientRequestId": UUID().uuidString.lowercased()])
+        XCTAssertNotEqual(onBreak, 200, "휴게 중 신청이 접수됨")
+        app.buttons["break.end"].tap()
+        XCTAssertTrue(waitUntil(timeout: 15) { app.staticTexts["home.status"].label.hasPrefix("촬영 가능") }, "휴게가 끝나지 않음")
+        attachScreenshot("L9 작가 홈", app: app)
+
+        // 채팅 탭: 방과 서버 시스템 메시지
+        app.tabBars.buttons["채팅"].tap()
+        let row = app.buttons["chat.row"].firstMatch.exists ? app.buttons["chat.row"].firstMatch : app.cells.firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 15), "채팅 목록에 방이 없음")
+        row.tap()
+        XCTAssertTrue(app.staticTexts["chat.system"].firstMatch.waitForExistence(timeout: 15), "시스템 메시지가 없음")
+        attachScreenshot("L9 대화방", app: app)
+
+        app.tabBars.buttons["촬영"].tap()
+        if toggle.waitForExistence(timeout: 10), toggle.value as? String == "1" {
+            toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        }
+    }
+
     // MARK: - 도우미
+
+    private func waitUntil(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if condition() { return true }
+            usleep(300_000)
+        }
+        return condition()
+    }
 
     private func signIn(at app: XCUIApplication, gate: Bool, account: EmulatorAdmin.TestAccount) throws {
         let age = app.switches["signIn.age14"]

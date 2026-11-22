@@ -17,12 +17,26 @@ import SBSNCore
 @Observable
 @MainActor
 final class LaunchPresencePublisher {
+    /// 2단계 촬영 가능 설정(W5): 이동할 수 있는 거리, 끝나는 시각, 휴게 사유. 켤 때와 바꿀 때 서버에 함께 보낸다.
+    struct Settings: Codable, Equatable {
+        var radiusMeters: Int64
+        var endsAt: Date
+        /// 휴게 중이면 사유 코드(`LaunchMatch.BreakReason`)
+        var breakReason: String?
+
+        var breakReasonValue: LaunchMatch.BreakReason? { breakReason.flatMap(LaunchMatch.BreakReason.init(rawValue:)) }
+    }
+
+    static let settingsKey = "SBSNLaunchAvailabilitySettings"
     static let publishInterval: Duration = .seconds(60)
     static let waitForLocation: Duration = .seconds(5)
     static let retryTurnOn: Duration = .seconds(10)
 
     /// 개발 메뉴에 보이는 마지막 상태(좌표·키는 넣지 않는다)
     private(set) var status: String?
+    /// 지금 촬영 가능 설정(켜져 있는 동안만). 앱을 다시 켜도 이어 보이게 저장한다.
+    private(set) var settings: Settings? = UserDefaults.standard.data(forKey: LaunchPresencePublisher.settingsKey)
+        .flatMap { try? JSONDecoder().decode(Settings.self, from: $0) }
     /// 발행 루프가 돌고 있다
     private(set) var isRunning = false
 
@@ -31,11 +45,39 @@ final class LaunchPresencePublisher {
     @ObservationIgnored var onRejected: ((String) -> Void)?
     @ObservationIgnored private var task: Task<Void, Never>?
 
-    /// 촬영 가능을 직접 켰을 때. 새 세션을 만들고 소유권을 가져온다.
-    func turnOn(uid: String) {
+    /// 촬영 가능을 직접 켰을 때. 새 세션을 만들고 소유권을 가져온다. 반경·끝 시각을 함께 보낸다(2단계).
+    func turnOn(uid: String, settings: Settings) {
         let session = LaunchPublicSession.start(uid: uid)
         LaunchPublicSession.Store.save(session)
+        save(settings)
         run(session, sendTurnOn: true)
+    }
+
+    /// 켠 채로 반경·끝 시각·휴게를 바꾼다(같은 기기 세션, 새 표시점을 뽑지 않는다).
+    func update(uid: String, settings: Settings) async throws {
+        guard let session = LaunchPublicSession.Store.load(uid: uid) else {
+            throw LaunchArtistService.Failure.other("촬영 가능이 꺼져 있습니다.")
+        }
+        try await Self.send(settings, deviceSessionId: session.deviceSessionId)
+        save(settings)
+    }
+
+    private func save(_ settings: Settings?) {
+        self.settings = settings
+        if let settings, let data = try? JSONEncoder().encode(settings) {
+            UserDefaults.standard.set(data, forKey: Self.settingsKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: Self.settingsKey)
+        }
+    }
+
+    private static func send(_ settings: Settings?, deviceSessionId: String) async throws {
+        if let settings {
+            try await LaunchArtistService.setAvailability(deviceSessionId: deviceSessionId, radiusMeters: settings.radiusMeters,
+                                                          endsAt: settings.endsAt, breakReason: settings.breakReasonValue)
+        } else {
+            try await LaunchArtistService.setAvailability(true, deviceSessionId: deviceSessionId)
+        }
     }
 
     /// 앱이 다시 켜져 촬영 가능을 이어 갈 때. 저장한 세션이 없으면 false(작가가 다시 켜야 한다).
@@ -50,6 +92,7 @@ final class LaunchPresencePublisher {
     /// 촬영 가능을 껐을 때·로그아웃·계정 삭제 전. 서버에 끄기를 보내고 세션을 지운다(다음에 켜면 새 키·새 표시점).
     func turnOff(uid: String?) async {
         stopLoop()
+        save(nil)
         guard let uid else { return }
         guard let session = LaunchPublicSession.Store.load(uid: uid) else {
             LaunchPublicSession.Store.clear()
@@ -107,7 +150,7 @@ final class LaunchPresencePublisher {
                 while !Task.isCancelled {
                     guard let self else { return }
                     do {
-                        try await LaunchArtistService.setAvailability(true, deviceSessionId: session.deviceSessionId)
+                        try await Self.send(settings, deviceSessionId: session.deviceSessionId)
                         break
                     } catch LaunchArtistService.Failure.other(let message) {
                         status = "촬영 가능 켜기 실패(다시 시도) · \(message)"
@@ -133,6 +176,11 @@ final class LaunchPresencePublisher {
     }
 
     private func publishOnce(_ session: LaunchPublicSession) async -> Outcome {
+        // 끝나는 시각이 지나면 서버도 지도에서 뺀다. 이 기기도 멈추고 알린다.
+        if let settings, settings.endsAt <= Date() {
+            finish(rejected: "끝나는 시각(\(LaunchTime.clock(settings.endsAt)))이 지나 촬영 가능을 껐어요.")
+            return .stop
+        }
         guard let point = latestLocation() else {
             status = "위치를 기다리는 중"
             return .waitingForLocation

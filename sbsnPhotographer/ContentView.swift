@@ -13,11 +13,13 @@ import SwiftUI
 /// 작가 앱의 하단 탭.
 enum PhotographerTab: Hashable {
     case shoot
+    case chat
     case history
     case my
 }
 
-/// 작가 앱의 뿌리 화면: 촬영 · 내역 · 마이 탭.
+/// 작가 앱의 뿌리 화면: 촬영 · 채팅 · 내역 · 마이 탭(D066 S1).
+/// 출시 티켓(시작 대기·촬영 중)이 있으면 촬영 탭이 그 티켓 화면이다.
 ///
 /// 업로드·위치는 화면이 아니라 `PhotographerSession.shared`가 돌려서 탭을 바꿔도 끊기지 않는다.
 /// 매칭되면(매칭 알림) 촬영 탭으로 넘어가 티켓 화면을 열고, 촬영이 끝나면 사진 고르기 화면으로 간다.
@@ -25,6 +27,7 @@ struct ContentView: View {
     @Environment(PhotographerSession.self) private var session
     @State private var path: [PhotographerRoute] = []
     @State private var selectedTab = PhotographerTab.shoot
+    @State private var launch = PhotographerLaunchModel()
 
     var body: some View {
         @Bindable var session = session
@@ -41,6 +44,13 @@ struct ContentView: View {
         }
         // 계정 삭제 뒤 안내. 탭이 로그인 관문으로 바뀌어도 보이게 뿌리에 둔다.
         .accountDeletionNotice($session.accountNotice)
+        .environment(launch)
+        // 출시 대화·신청·티켓은 연결된 계정만 듣는다(규칙).
+        .task(id: "\(session.uid ?? "-")#\(session.account?.isLinked == true)") {
+            let session = session
+            launch.latestLocation = { session.location.latest }
+            launch.start(uid: session.account?.isLinked == true ? session.uid : nil)
+        }
     }
 
     private var tabs: some View {
@@ -48,12 +58,24 @@ struct ContentView: View {
             shootTab
                 .tabItem { Label("촬영", systemImage: "camera") }
                 .tag(PhotographerTab.shoot)
+            PhotographerChatTab()
+                .tabItem { Label("채팅", systemImage: "bubble.left.and.bubble.right") }
+                .badge(launch.totalUnread)
+                .tag(PhotographerTab.chat)
             PhotographerHistoryTab()
                 .tabItem { Label("내역", systemImage: "list.bullet.rectangle") }
                 .tag(PhotographerTab.history)
             PhotographerMyTab()
                 .tabItem { Label("마이", systemImage: "person.crop.circle") }
                 .tag(PhotographerTab.my)
+        }
+        .onChange(of: launch.activeTicket?.id) { _, ticketId in
+            if ticketId != nil { selectedTab = .shoot }
+        }
+        .onChange(of: launch.requestedTab) { _, tab in
+            guard let tab else { return }
+            launch.requestedTab = nil
+            selectedTab = tab
         }
         // 촬영 중에는 홈으로 돌아가지 않게 티켓 화면을 경로에 둔다.
         .onChange(of: session.ticket?.id, initial: true) { _, ticketID in
@@ -74,7 +96,19 @@ struct ContentView: View {
         }
     }
 
+    @ViewBuilder
     private var shootTab: some View {
+        if let ticket = launch.activeTicket {
+            NavigationStack {
+                PhotographerLaunchTicketView(ticket: ticket)
+                    .id(ticket.id)
+            }
+        } else {
+            mvpShootTab
+        }
+    }
+
+    private var mvpShootTab: some View {
         NavigationStack(path: $path) {
             PhotographerHomeView()
                 .navigationDestination(for: PhotographerRoute.self) { route in

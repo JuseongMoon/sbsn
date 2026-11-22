@@ -72,9 +72,11 @@ public enum LaunchArtistService {
             return .other(error.localizedDescription)
         }
         switch code {
-        case .failedPrecondition: return .replacedByOtherDevice
+        // 다른 기기가 켰을 때와 끝 시각·제재(2단계)가 같은 코드로 온다. 서버 문구로 나눈다.
+        case .failedPrecondition:
+            return nsError.localizedDescription.contains("다른 기기") ? .replacedByOtherDevice : .rejected(nsError.localizedDescription)
         case .resourceExhausted: return .rateLimited
-        case .permissionDenied, .unauthenticated: return .rejected(nsError.localizedDescription)
+        case .permissionDenied, .unauthenticated, .invalidArgument: return .rejected(nsError.localizedDescription)
         default: return .other(nsError.localizedDescription)
         }
     }

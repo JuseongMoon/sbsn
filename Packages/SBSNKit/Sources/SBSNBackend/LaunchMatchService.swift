@@ -287,7 +287,8 @@ public enum LaunchMatchService {
                                    minutes: (data["minutes"] as? NSNumber)?.intValue ?? 0, status: status,
                                    createdAt: FirestoreCodec.date(data["createdAt"]), expiresAt: expiresAt,
                                    ticketId: data["ticketId"] as? String,
-                                   declineReason: (data["declineReason"] as? String).flatMap(LaunchMatch.DeclineReason.init(rawValue:)))
+                                   declineReason: (data["declineReason"] as? String).flatMap(LaunchMatch.DeclineReason.init(rawValue:)),
+                                   customerNickname: data["customerNickname"] as? String)
     }
 
     static func ticket(id: String, data: [String: Any]) -> LaunchMatch.Ticket? {

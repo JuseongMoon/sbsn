@@ -131,9 +131,12 @@ public enum LaunchMatch {
         public let expiresAt: Date
         public let ticketId: String?
         public let declineReason: DeclineReason?
+        /// 서버가 넣는 고객 닉네임(W11). 없으면 "고객"으로 보인다.
+        public let customerNickname: String?
 
         public init(id: String, roomId: String, customerUid: String, photographerUid: String, minutes: Int,
-                    status: RequestStatus, createdAt: Date?, expiresAt: Date, ticketId: String?, declineReason: DeclineReason?) {
+                    status: RequestStatus, createdAt: Date?, expiresAt: Date, ticketId: String?, declineReason: DeclineReason?,
+                    customerNickname: String? = nil) {
             self.id = id
             self.roomId = roomId
             self.customerUid = customerUid
@@ -144,6 +147,7 @@ public enum LaunchMatch {
             self.expiresAt = expiresAt
             self.ticketId = ticketId
             self.declineReason = declineReason
+            self.customerNickname = customerNickname
         }
 
         /// 아직 답을 기다린다(서버 정리가 늦어도 만료 시각이 지났으면 대기로 보지 않는다).
