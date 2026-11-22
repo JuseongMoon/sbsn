@@ -130,6 +130,7 @@ final class PhotographerSession {
                 await attach(ticketID: ticketID, restoring: true)
             }
             await restoreGalleries()
+            await refreshPublishedAt(of: publishedGalleries.map(\.ticketID))
             if UserDefaults.standard.bool(forKey: Self.availableKey) {
                 // 지난번에 켜 둔 "촬영 가능"을 이어 간다. 위치가 오면 presence가 다시 발행된다.
                 isAvailable = true
@@ -272,7 +273,10 @@ final class PhotographerSession {
 
     /// 공개가 끝난 티켓: 공개 기록으로 옮기고 지연 알림을 지우고 로컬 사본을 지운다.
     private func finishGallery(_ model: CuratedDeliveryModel) {
-        let record = PublishedGallery(ticketID: model.ticketID, publishedAt: model.ticket.galleryPublishedAt ?? Date(),
+        // 공개 시각은 서버 값을 쓴다. 아직 모르면 기기 시각을 임시로 두고 바로 서버에서 다시 읽어 바꾼다
+        // (기기 시계가 어긋나면 내역 목록과 상세의 공개 시각이 달라 보였다).
+        let serverPublishedAt = model.serverPublishedAt
+        let record = PublishedGallery(ticketID: model.ticketID, publishedAt: serverPublishedAt ?? Date(),
                                       endedAt: model.ticket.endedAt, photoCount: model.photos.count)
         publishedGalleries.removeAll { $0.ticketID == record.ticketID }
         publishedGalleries.append(record)
@@ -281,6 +285,27 @@ final class PhotographerSession {
         galleries[model.ticketID] = nil
         savePendingGalleries()
         model.deleteLocalFiles()
+        if serverPublishedAt == nil {
+            Task { await refreshPublishedAt(of: [model.ticketID]) }
+        }
+    }
+
+    /// 서버의 공개 시각으로 내역 기록을 맞춘다. 화면은 서버 값을 우선한다(상세 화면이 읽은 값도 여기로 넘긴다).
+    func applyServerPublishedAt(_ date: Date, for ticketID: String) {
+        guard let index = publishedGalleries.firstIndex(where: { $0.ticketID == ticketID }),
+              publishedGalleries[index].publishedAt != date
+        else { return }
+        publishedGalleries[index].publishedAt = date
+        savePublishedGalleries()
+    }
+
+    /// 내역 기록의 공개 시각을 서버에서 다시 읽는다. 읽지 못하면(오프라인 등) 다음 기회에 맞춘다.
+    private func refreshPublishedAt(of ticketIDs: [String]) async {
+        for ticketID in ticketIDs {
+            if let publishedAt = try? await TicketService.fetchTicket(ticketID)?.galleryPublishedAt {
+                applyServerPublishedAt(publishedAt, for: ticketID)
+            }
+        }
     }
 
     private func savePendingGalleries() {
@@ -628,7 +653,8 @@ enum PhotographerRoute: Hashable {
 /// 공개한 촬영 기록(내역 탭). 구매 기한 동안 남긴다.
 struct PublishedGallery: Codable, Identifiable, Hashable {
     let ticketID: String
-    let publishedAt: Date
+    /// 서버의 공개 시각. 공개 직후 서버 값을 아직 모를 때만 잠깐 기기 시각이다.
+    var publishedAt: Date
     let endedAt: Date?
     let photoCount: Int
 

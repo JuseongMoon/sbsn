@@ -126,6 +126,12 @@ final class CuratedDeliveryModel: Identifiable {
     /// 위치가 지워진 채 들어온 사진 수(I008 안내)
     var locationRemovedCount: Int { photos.filter(\.locationRemoved).count }
     var isPublished: Bool { publishState.isPublished }
+    /// 서버가 정한 공개 시각(티켓 문서 또는 공개 함수 결과). 아직 모르면 nil이고 기기 시각으로 채우지 않는다.
+    var serverPublishedAt: Date? {
+        if let date = ticket.galleryPublishedAt { return date }
+        if case .published(let date) = publishState { return date }
+        return nil
+    }
     var canEditSelection: Bool { !isPublished && publishState != .publishing }
     /// 공개 버튼을 막는 이유(장수). nil이면 장수는 맞다.
     var countProblem: String? { PhotoCuration.countProblem(photos.count) }
@@ -401,7 +407,8 @@ final class CuratedDeliveryModel: Identifiable {
                 try await TicketGallery.publish(ticketId: ticketID, photoIds: ids)
             }
             appendEvent("published", "-", "-", bytes: ids.count, seconds: 0, note: result.photoIDs.joined(separator: " "))
-            markPublished(at: result.publishedAt ?? Date(), ids: result.photoIDs)
+            // 서버 시각이 없으면 비워 둔다(기기 시각으로 채우지 않는다). 세션이 나중에 서버 값으로 맞춘다.
+            markPublished(at: result.publishedAt, ids: result.photoIDs)
         } catch let error as TicketGallery.PublishError {
             appendLog("publish failed: \(error.reason ?? "-") \(error.photoID ?? "")")
             if error.reason == "GALLERY_ALREADY_PUBLISHED", let fresh = try? await TicketService.fetchTicket(ticketID),

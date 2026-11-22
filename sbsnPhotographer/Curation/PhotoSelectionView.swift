@@ -385,6 +385,9 @@ struct PublishedGalleryView: View {
                 return
             }
             ticket = fetched
+            if let publishedAt = fetched.galleryPublishedAt {
+                session.applyServerPublishedAt(publishedAt, for: ticketID)
+            }
             let downloader = TicketPhotoDownloader(ticketID: ticketID)
             for photoID in fetched.galleryPhotoIds {
                 if let data = try? await downloader.preview(photoId: photoID) {
