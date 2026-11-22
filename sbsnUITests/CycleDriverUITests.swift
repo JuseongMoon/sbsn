@@ -122,6 +122,24 @@ final class CycleDriverUITests: XCTestCase {
         attachScreenshot("P14 공개", app: app)
     }
 
+    /// 정리: 촬영 탭 홈에서 "촬영 가능"이 켜져 있으면 끈다(시험이 끝난 기기가 고객 지도에 남지 않게).
+    func test_P17_photographerGoesUnavailable() throws {
+        let app = photographerApp
+        app.activate()
+        XCTAssertTrue(app.tabBars.buttons["촬영"].waitForExistence(timeout: 30))
+        app.tabBars.buttons["촬영"].tap()
+        for _ in 0..<3 where app.navigationBars.buttons.element(boundBy: 0).exists && !app.switches["photographer.available"].exists {
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+        }
+        let toggle = app.switches["photographer.available"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 15), "촬영 가능 토글이 없음")
+        if toggle.value as? String == "1" {
+            tapSwitch(toggle)
+        }
+        XCTAssertTrue(waitUntil(timeout: 15) { toggle.value as? String == "0" }, "촬영 가능이 꺼지지 않음")
+        print("SBSN 촬영 가능 끔 \(Date().ISO8601Format(.iso8601.time(includingFractionalSeconds: true)))")
+    }
+
     /// 정리: 개발 메뉴에서 자동 시험용 사진 폴더(`Documents/TestPhotos/`)를 지운다.
     func test_P15_photographerDeletesTestPhotos() throws {
         let app = photographerApp
@@ -379,6 +397,22 @@ final class CycleDriverUITests: XCTestCase {
         XCTAssertTrue(waitUntil(timeout: timeout) { cells.count > photoIndex }, "갤러리에 사진이 \(photoIndex + 1)장 이상 보이지 않음")
         print("SBSN 고객 갤러리 보임 \(Date().ISO8601Format(.iso8601.time(includingFractionalSeconds: true))) 사진 \(cells.count)장")
         attachScreenshot("C4 갤러리", app: app)
+    }
+
+    /// `SBSN_PHOTO_INDEX`번째 사진을 열어 찜한다. 서버에 기록되면 단추가 "찜 해제"로 바뀐다. 끝나면 갤러리로 돌아간다.
+    func test_C21_customerFavorites() throws {
+        let app = activateCustomer()
+        openShootTab(app)
+        let cells = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'photo.cell.'"))
+        XCTAssertTrue(waitUntil(timeout: 60) { cells.count > photoIndex }, "갤러리에 사진이 \(photoIndex + 1)장 이상 보이지 않음")
+        cells.element(boundBy: photoIndex).tap()
+        let favorite = app.buttons["찜"].firstMatch
+        XCTAssertTrue(favorite.waitForExistence(timeout: 15), "찜 단추가 없음")
+        favorite.tap()
+        XCTAssertTrue(app.buttons["찜 해제"].waitForExistence(timeout: 15), "찜이 기록되지 않음")
+        print("SBSN 찜 photo.cell.\(photoIndex) \(Date().ISO8601Format(.iso8601.time(includingFractionalSeconds: true)))")
+        attachScreenshot("C21 찜", app: app)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
     }
 
     /// `SBSN_PHOTO_INDEX`번째 사진을 열어 구매하고, 사진 앱에 저장될 때까지 기다린다.
