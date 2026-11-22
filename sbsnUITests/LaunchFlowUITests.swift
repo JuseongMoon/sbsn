@@ -101,6 +101,33 @@ final class LaunchFlowUITests: XCTestCase {
         print("SBSN Google 취소 뒤 로그인 시트, 오류 없음")
     }
 
+    /// 고객 개발 메뉴의 "출시 로그인 시험(Auth만)" 칸: 계정 요약이 보이고, Google 단추가 시스템 확인 창을 띄우며, 취소하면 "Google 취소".
+    func test_L6_authProbeSection() throws {
+        let app = XCUIApplication(bundleIdentifier: "com.ScienceFiction.sbsn")
+        app.launchArguments = ["-SBSNEmulatorHost", emulatorHost]
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["마이"].waitForExistence(timeout: 30))
+        app.tabBars.buttons["마이"].tap()
+        let developer = app.buttons["my.developer"]
+        for _ in 0..<6 where !(developer.exists && developer.isHittable) { app.swipeUp() }
+        developer.tap()
+        let summary = app.descendants(matching: .any)["dev.auth.account"]
+        for _ in 0..<4 where !summary.exists { app.swipeUp() }
+        XCTAssertTrue(summary.waitForExistence(timeout: 10), "출시 로그인 시험 칸이 없음")
+        print("SBSN 시험 칸 계정: \(summary.label)")
+        let google = app.buttons["dev.auth.google"]
+        for _ in 0..<4 where !google.isHittable { app.swipeUp() }
+        google.tap()
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let cancel = springboard.alerts.buttons["취소"]
+        XCTAssertTrue(cancel.waitForExistence(timeout: 15), "Google 확인 창이 뜨지 않음")
+        cancel.tap()
+        let result = app.staticTexts["dev.auth.result"]
+        XCTAssertTrue(result.waitForExistence(timeout: 10))
+        print("SBSN 시험 칸 결과: \(result.label)")
+        XCTAssertEqual(result.label, "Google 취소")
+    }
+
     private func waitUntilTrue(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {

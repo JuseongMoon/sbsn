@@ -203,6 +203,14 @@ struct CustomerDeveloperPage: View {
                     session.clearLocalTicketForDebug()
                 }
             }
+            #if DEBUG
+            // 출시 로그인 제공자 시험(총괄 순서 2번, sbsn-dev는 Auth만·함수 호출 없음)
+            LaunchAuthProbeSection {
+                await session.accountDidChange()
+            } onSignOut: {
+                await session.reissueAccount()
+            }
+            #endif
             if let message = session.debugMessage {
                 Section {
                     Text(message)

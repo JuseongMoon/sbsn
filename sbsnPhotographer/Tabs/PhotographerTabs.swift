@@ -230,6 +230,12 @@ struct PhotographerDeveloperPage: View {
                 }
             }
             #if DEBUG
+            // 출시 로그인 제공자 시험(총괄 순서 2번, sbsn-dev는 Auth만·함수 호출 없음)
+            LaunchAuthProbeSection {
+                await session.accountDidChange(nickname: "")
+            } onSignOut: {
+                await session.resetAnonymousAccount()
+            }
             Section("시험") {
                 NavigationLink("메타데이터 경로 시험") { MetadataProbeView() }
                     .accessibilityIdentifier("dev.metadataProbe")

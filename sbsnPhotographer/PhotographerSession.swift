@@ -632,7 +632,7 @@ final class PhotographerSession {
     /// 이름이 비어 있으면 서버 닉네임을 쓴다(지도에 보이는 이름은 닉네임이다, L06).
     func accountDidChange(nickname: String) async {
         account = AccountService.current
-        if displayName.isEmpty || PhotographerPresence.validDisplayName(displayName) == nil {
+        if !nickname.isEmpty, displayName.isEmpty || PhotographerPresence.validDisplayName(displayName) == nil {
             displayName = String(nickname.prefix(39))
         }
         guard let current = account?.uid, current != uid else { return }
