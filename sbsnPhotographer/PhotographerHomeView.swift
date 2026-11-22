@@ -104,6 +104,7 @@ struct PhotographerHomeView: View {
                 Section {
                     Text(message)
                         .foregroundStyle(.red)
+                        .accessibilityIdentifier("photographer.error")
                 }
             }
         }

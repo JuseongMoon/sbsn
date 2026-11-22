@@ -110,6 +110,28 @@ public enum AccountService {
         try Auth.auth().signOut()
     }
 
+    // MARK: - 계정 삭제(L10)
+
+    /// Apple로 다시 인증한다. 서버는 5분 안에 로그인한 계정의 삭제 요청만 받는다(웹 계약 `requestAccountDeletionV1`).
+    public static func reauthenticate(appleIDToken: String, rawNonce: String) async throws {
+        guard let user = Auth.auth().currentUser else { throw AccountError.notSignedIn }
+        let credential = OAuthProvider.appleCredential(withIDToken: appleIDToken, rawNonce: rawNonce, fullName: nil)
+        try await user.reauthenticate(with: credential)
+    }
+
+    /// 계정 삭제를 요청하고 삭제 작업 상태(`queued`, `awaiting-apple-revocation` 등)를 돌려준다.
+    /// 서버가 공개 지도에서 바로 내리고 출시 쓰기를 막은 뒤 프로필·기기·위치·역할·채팅 본문·Auth를 정리한다.
+    /// Apple 연결 계정은 방금 받은 인가 코드와 이 앱의 App ID를 함께 보낸다(서버가 Apple 토큰을 취소한다). 그 밖에는 nil.
+    public static func requestDeletion(appleCode: String?, appleClientId: String?) async throws -> String {
+        var data: [String: Any] = ["confirmed": true]
+        if let appleCode, let appleClientId {
+            data["appleCode"] = appleCode
+            data["appleClientId"] = appleClientId
+        }
+        let response = try await Backend.functions(region: region).httpsCallable("requestAccountDeletionV1").call(data)
+        return (response.data as? [String: Any])?["status"] as? String ?? "queued"
+    }
+
     /// 만 14세 확인과 닉네임을 저장하고 서버가 정한 닉네임을 돌려준다(`saveLaunchProfileV1`).
     /// `nickname`이 nil이면 처음에는 서버가 만들고, 그 뒤에는 있던 이름을 그대로 둔다(1~30자, 제어문자·@ 불가).
     public static func saveProfile(age14Confirmed: Bool, nickname: String?) async throws -> String {

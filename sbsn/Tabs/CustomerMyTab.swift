@@ -28,6 +28,12 @@ struct CustomerAccountSection: View {
                     }
                 }
                 .accessibilityIdentifier("my.signOut")
+                // 계정 삭제(L10): 서버가 지도·데이터·Auth를 정리한다. 접수되면 익명 둘러보기로 돌아간다.
+                AccountDeletionButton { _ in
+                    await session.reissueAccount()
+                    nickname = ""
+                    self.account = AccountService.current
+                }
             } else {
                 Text("로그인 없이 둘러보는 중입니다. 채팅과 촬영 신청은 로그인 뒤 할 수 있습니다.")
                     .font(.footnote)

@@ -54,6 +54,10 @@ final class PhotographerSession {
     private(set) var cancelledByCustomer: TicketRecord?
     private(set) var isRestoring = false
     let location = PhotographerLocationTracker()
+    /// 출시 1단계 공개 위치 발행(개발용 에뮬레이터를 쓸 때만, D059)
+    let launchPublisher = LaunchPresencePublisher()
+    /// 지금 로그인한 계정. 출시 기능을 쓸 때 익명이면 로그인 화면을 보인다(작가는 처음부터 로그인, D051).
+    private(set) var account: AccountService.Account?
 
     @ObservationIgnored private var presenceTask: Task<Void, Never>?
     @ObservationIgnored private var ticketTask: Task<Void, Never>?
@@ -104,6 +108,17 @@ final class PhotographerSession {
         location.onLocation = { [weak self] point in
             self?.handleLocation(point)
         }
+        launchPublisher.latestLocation = { [weak self] in self?.location.latest }
+        // 작가 기기 한 대(L08): 다른 기기가 촬영 가능을 켜면 이 기기는 끄고 알린다(Android와 같은 문구).
+        launchPublisher.onReplacedByOtherDevice = { [weak self] in
+            self?.setAvailable(false)
+            self?.errorMessage = LaunchArtistService.Failure.replacedByOtherDevice.errorDescription
+        }
+        // 운영 승인 전 작가(L07)·삭제 요청 중: 서버가 거부하면 끄고 서버 문구를 보인다.
+        launchPublisher.onRejected = { [weak self] message in
+            self?.setAvailable(false)
+            self?.errorMessage = message
+        }
         startHeartbeat()
         let deviceLog = DeviceConditionLog { [unowned self] in
             DeviceConditionLog.Context(isAvailable: isAvailable, phase: ticket.map { "\($0.phase)" } ?? "none")
@@ -122,6 +137,7 @@ final class PhotographerSession {
         do {
             let uid = try await Backend.signedInUserID()
             self.uid = uid
+            account = AccountService.current
             listenToPresence(uid: uid)
             // 맥에서 자동 시험을 돌릴 때 관리자 스크립트가 만든 시험 티켓을 실행 인자(-SBSNTicketID)로 넘긴다.
             if let testTicketID = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)["SBSNTicketID"] as? String {
@@ -131,10 +147,15 @@ final class PhotographerSession {
             }
             await restoreGalleries()
             await refreshPublishedAt(of: publishedGalleries.map(\.ticketID))
+            await launchPublisher.flushPendingTurnOff(uid: uid)
             if UserDefaults.standard.bool(forKey: Self.availableKey) {
                 // 지난번에 켜 둔 "촬영 가능"을 이어 간다. 위치가 오면 presence가 다시 발행된다.
                 isAvailable = true
                 location.start()
+                // 출시 공개 위치는 저장한 세션으로 발행만 해서 소유권을 확인한다(켜기를 다시 보내지 않는다, 격자 규격).
+                if !launchPublisher.resume(uid: uid) {
+                    setAvailable(false)
+                }
             }
         } catch {
             errorMessage = "로그인하지 못했습니다: \(error.localizedDescription)"
@@ -395,6 +416,8 @@ final class PhotographerSession {
             errorMessage = nil
             location.start()
             requestNotificationAuthorizationIfNeeded()
+            // 출시 1단계 공개 위치(D059): 켜는 순간 새 세션으로 소유권을 가져오고 60초마다 표시점을 발행한다(에뮬레이터일 때만).
+            launchPublisher.turnOn(uid: uid)
             if let point = location.latest {
                 publishPresence(point: point)
             }
@@ -404,6 +427,9 @@ final class PhotographerSession {
             if ticket == nil {
                 location.stop()
             }
+            Task { await launchPublisher.turnOff(uid: uid) }
+            // 공개 상태 문서가 아직 없으면(위치를 한 번도 발행하기 전에 껐으면) 끌 것이 없다.
+            guard presence != nil else { return }
             Task {
                 do {
                     try await PhotographerDirectory.setAvailable(uid: uid, false)
@@ -570,7 +596,10 @@ final class PhotographerSession {
     // MARK: - 디버그
 
     /// 새 작가로 시험하려고 익명 계정을 버린다. 익명 계정은 키체인에 남아 앱을 지워도 돌아오기 때문이다.
+    /// 출시 계정의 로그아웃·계정 삭제 뒤에도 쓴다(새 익명 계정이 되고, 출시 기능을 쓰면 로그인 화면이 다시 뜬다).
     func resetAnonymousAccount() async {
+        // 공개 위치를 먼저 끈다(로그아웃 뒤에는 이 계정으로 끄기를 보낼 수 없다, 격자 규격).
+        await launchPublisher.turnOff(uid: uid)
         presenceTask?.cancel()
         ticketTask?.cancel()
         ticket = nil
@@ -583,6 +612,7 @@ final class PhotographerSession {
             try await Backend.signOut()
             let uid = try await Backend.signedInUserID()
             self.uid = uid
+            account = AccountService.current
             listenToPresence(uid: uid)
             errorMessage = nil
         } catch {
@@ -592,6 +622,29 @@ final class PhotographerSession {
 
     func clearLocalTicket() {
         detachTicket()
+    }
+
+    // MARK: - 출시 계정(D059)
+
+    /// 로그인 화면에서 로그인한 뒤. 익명 계정에 연결했으면 uid가 같고, 이미 있던 계정으로 로그인했으면 바뀐다.
+    /// 이름이 비어 있으면 서버 닉네임을 쓴다(지도에 보이는 이름은 닉네임이다, L06).
+    func accountDidChange(nickname: String) async {
+        account = AccountService.current
+        if displayName.isEmpty || PhotographerPresence.validDisplayName(displayName) == nil {
+            displayName = String(nickname.prefix(39))
+        }
+        guard let current = account?.uid, current != uid else { return }
+        await launchPublisher.turnOff(uid: uid)
+        presenceTask?.cancel()
+        ticketTask?.cancel()
+        ticket = nil
+        presence = nil
+        isAvailable = false
+        location.stop()
+        UserDefaults.standard.removeObject(forKey: Self.activeTicketKey)
+        UserDefaults.standard.set(false, forKey: Self.availableKey)
+        uid = current
+        listenToPresence(uid: current)
     }
 
     #if DEBUG
