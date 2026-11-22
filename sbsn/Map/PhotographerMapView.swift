@@ -31,6 +31,18 @@ struct PhotographerMapView: View {
     /// 가격·조건 확인 시트에 띄운 작가. 시트를 연 동안 지도에서 빠져도 그 작가로 확정한다.
     @State private var reviewingPhotographer: PhotographerPresence?
     @State private var mode = Mode.map
+    /// 출시 1단계 지도(D059): 에뮬레이터를 쓸 때만 조회한다. 마지막으로 멈춘 화면과 조회 결과
+    @State private var lastViewport: MapViewport?
+    @State private var launchMap: LaunchMapState?
+
+    /// 출시 지도 조회 결과를 묶은 것
+    struct LaunchMapState: Equatable {
+        let clusters: [PublicLocationGrid.MapCluster]
+        /// 조회 영역 안 결과가 100명을 넘어 반환된 점만 셌다
+        let truncated: Bool
+        /// 화면이 100칸보다 넓어 가운데만 조회했다("확대하면 더 보입니다")
+        let narrowed: Bool
+    }
 
     enum Mode: Hashable {
         case map
@@ -81,6 +93,7 @@ struct PhotographerMapView: View {
             .task { authorization.requestWhenInUseIfNeeded() }
             .task(id: listenerGeneration) { await listen() }
             .task { await tickClock() }
+            .task { await refreshLaunchMapPeriodically() }
             .onChange(of: markers.map(\.id)) { _, ids in
                 if let selectedUid, !ids.contains(selectedUid) {
                     self.selectedUid = nil
@@ -103,11 +116,75 @@ struct PhotographerMapView: View {
     }
 
     /// Google 지도(D051·L30, 맵 ID 없음). 핀 제목이 작가 이름이고 UI 시험은 `marker.<이름>`으로 찾는다.
+    /// 에뮬레이터에서는 출시 지도 조회 결과(표시점·묶음)도 함께 그린다(Android 3057de3과 같은 기준).
     private var map: some View {
         GoogleMapView(pins: markers.map {
             MapPin(id: $0.id, title: $0.presence.displayName, point: $0.point, style: .photographer,
                    accessibilityIdentifier: "marker.\($0.presence.displayName)")
-        }, selection: $selectedUid, framing: framing, showsMyLocation: true, onUserMove: { userMovedMap = true })
+        } + launchPins, selection: $selectedUid, framing: framing, showsMyLocation: true,
+                      onUserMove: { userMovedMap = true },
+                      onIdle: Backend.usesLaunchFeatures ? { viewport in
+                          lastViewport = viewport
+                          Task { await queryLaunchMap(viewport) }
+                      } : nil)
+        .overlay(alignment: .top) {
+            if launchMap?.narrowed == true {
+                Text("확대하면 더 보입니다")
+                    .font(.footnote)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(.regularMaterial, in: Capsule())
+                    .padding(.top, 8)
+                    .accessibilityIdentifier("launch.map.zoomIn")
+            }
+        }
+    }
+
+    /// 출시 지도 핀: 한 명은 그 작가의 표시점(marker.<닉네임>), 둘 이상은 합친 사각형 가운데의 인원수(cluster.<묶음 ID>, 잘렸으면 "n+")
+    private var launchPins: [MapPin] {
+        guard let launchMap else { return [] }
+        return launchMap.clusters.map { cluster in
+            let position = PublicLocationGrid.unproject(cluster.center)
+            let point = GeoPoint(latitude: position.latitude, longitude: position.longitude)
+            if let single = cluster.single {
+                return MapPin(id: "launch.\(single.uid)", title: single.nickname, point: point, style: .photographer,
+                              accessibilityIdentifier: "marker.\(single.nickname)")
+            }
+            let count = launchMap.truncated ? "\(cluster.count)+" : "\(cluster.count)"
+            return MapPin(id: "cluster.\(cluster.id)", title: "작가 \(count)명", point: point, style: .cluster(count),
+                          accessibilityIdentifier: "cluster.\(cluster.id)")
+        }
+    }
+
+    /// 멈춘 화면으로 출시 지도를 조회한다(규격: 여덟 점 폭 → 묶음 수준, 100칸이 넘는 축은 가운데 100칸).
+    private func queryLaunchMap(_ viewport: MapViewport) async {
+        guard Backend.usesLaunchFeatures,
+              let box = PublicLocationGrid.projectedViewport(viewport.points.map { ($0.latitude, $0.longitude) })
+        else { return }
+        let level = PublicLocationGrid.clusterLevel(screenWidthMm: box.east - box.west)
+        let center = PublicLocationGrid.project(latitude: viewport.center.latitude, longitude: viewport.center.longitude)
+        let rect = PublicLocationGrid.queryRect(west: box.west, south: box.south, east: box.east, north: box.north, center: center)
+        guard rect.west <= rect.east, rect.south <= rect.north else {
+            launchMap = LaunchMapState(clusters: [], truncated: false, narrowed: rect.narrowed)
+            return
+        }
+        do {
+            let result = try await LaunchMapService.findPhotographers(west: rect.west, south: rect.south, east: rect.east, north: rect.north)
+            guard viewport == lastViewport else { return }
+            launchMap = LaunchMapState(clusters: PublicLocationGrid.clusters(result.photographers, level: level),
+                                       truncated: result.truncated, narrowed: rect.narrowed)
+        } catch {
+            listenError = "작가 지도를 불러오지 못했습니다: \(error.localizedDescription)"
+        }
+    }
+
+    /// 지도가 멈춘 뒤에도 60초마다 다시 조회한다(표시 위치 유효 기간 120초, 작가 발행 60초).
+    private func refreshLaunchMapPeriodically() async {
+        guard Backend.usesLaunchFeatures else { return }
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(60))
+            if let lastViewport { await queryLaunchMap(lastViewport) }
+        }
     }
 
     private var modePicker: some View {

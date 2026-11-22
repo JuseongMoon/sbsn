@@ -24,6 +24,10 @@ public enum Backend {
     /// 지금 쓰는 에뮬레이터. nil이면 GoogleService-Info.plist의 실제 프로젝트(sbsn-dev)에 붙는다.
     nonisolated(unsafe) public private(set) static var emulator: Emulator?
 
+    /// 출시 1단계 기능(계정·지도)을 쓸지. sbsn-dev에 출시 함수가 배포되기 전이라 개발용 에뮬레이터를 쓸 때만 켠다
+    /// (sbsn-dev의 MVP 흐름은 그대로 둔다, D059·D060).
+    public static var usesLaunchFeatures: Bool { emulator != nil }
+
     /// 앱 시작 시 한 번 호출한다. 앱 번들에 GoogleService-Info.plist가 있어야 한다.
     @MainActor
     public static func configure() {

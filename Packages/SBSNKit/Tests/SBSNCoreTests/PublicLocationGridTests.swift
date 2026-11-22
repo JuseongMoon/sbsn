@@ -108,20 +108,44 @@ struct PublicLocationGridTests {
         #expect(PublicLocationGrid.clusterLevel(screenWidthMm: 9_000_000_000) == 10)
     }
 
-    /// 조회 범위: 축마다 100칸(20km)을 넘으면 가운데 100칸으로 줄인다.
+    /// 조회 범위: 100칸을 넘는 축만 중심 칸 c 기준 c-50~c+49칸(끝 경계 -1mm), 서버는 칸 차이 100 이상을 거부한다.
     @Test func queryRectNarrowsToCenterHundredCells() {
-        let small = PublicLocationGrid.queryRect(west: 950_000_000, south: 1_950_000_000, east: 960_000_000, north: 1_960_000_000)
-        #expect(!small.narrowed && small.west == 950_000_000 && small.east == 960_000_000)
-        let wide = PublicLocationGrid.queryRect(west: 900_000_000, south: 1_950_000_000, east: 960_000_000, north: 1_960_000_000)
+        let center = PublicLocationGrid.ProjectedPoint(eastMm: 1_000_000_000, northMm: 2_000_000_000)
+        let small = PublicLocationGrid.queryRect(west: 995_000_000, south: 1_995_000_000, east: 1_005_000_000, north: 2_005_000_000, center: center)
+        #expect(!small.narrowed && small.west == 995_000_000 && small.east == 1_005_000_000)
+        // 중심 g1:0:0, 동서만 100칸 초과 → 동서 -50번~49번 칸, 남북은 화면 그대로(규격 예시)
+        let wide = PublicLocationGrid.queryRect(west: 980_000_100, south: 1_995_000_000, east: 1_020_000_000, north: 2_005_000_000, center: center)
         #expect(wide.narrowed)
-        #expect(wide.east - wide.west == 20_000_000 && wide.west == 920_000_000)
-        #expect(wide.south == 1_950_000_000 && wide.north == 1_960_000_000)
+        #expect(wide.west == 1_000_000_000 - 50 * 200_000 && wide.east == 1_000_000_000 + 50 * 200_000 - 1)
+        #expect(wide.south == 1_995_000_000 && wide.north == 2_005_000_000)
+        let cellsAcross = PublicLocationGrid.Cell(containing: .init(eastMm: wide.east, northMm: wide.south)).x
+            - PublicLocationGrid.Cell(containing: .init(eastMm: wide.west, northMm: wide.south)).x
+        #expect(cellsAcross == 99, "서버가 받는 칸 차이(100 이상 거부)")
+        // 정확히 100칸이면 줄이지 않는다(칸 경계에 맞춘 20km)
+        let exact = PublicLocationGrid.queryRect(west: 1_000_000_000, south: 2_000_000_000, east: 1_020_000_000 - 1, north: 2_000_100_000, center: center)
+        #expect(!exact.narrowed)
         // 화면 네 모서리·변 가운데 투영: 서울 시청 둘레 약 2km 화면
         let box = PublicLocationGrid.projectedViewport([(37.575, 126.966), (37.575, 126.990), (37.557, 126.966), (37.557, 126.990),
                                                        (37.575, 126.978), (37.557, 126.978), (37.566, 126.966), (37.566, 126.990)])
         let width = box.map { $0.east - $0.west } ?? 0
         #expect(width > 2_000_000 && width < 2_200_000)
         #expect(PublicLocationGrid.clusterLevel(screenWidthMm: width) == 0)
+    }
+
+    /// 묶음: UID별 한 번, 한 명은 표시점, 둘 이상은 합친 사각형 가운데
+    @Test func clustersCountOncePerUidAndCenter() {
+        let a = PublicLocationGrid.MapPhotographer(uid: "a", nickname: "작가A", display: .init(eastMm: 1_000_050_000, northMm: 2_000_050_000))
+        let b = PublicLocationGrid.MapPhotographer(uid: "b", nickname: "작가B", display: .init(eastMm: 1_000_250_000, northMm: 2_000_050_000))
+        let c = PublicLocationGrid.MapPhotographer(uid: "c", nickname: "작가C", display: .init(eastMm: 1_005_000_000, northMm: 2_000_050_000))
+        let level0 = PublicLocationGrid.clusters([a, b, c, a], level: 0)
+        #expect(level0.count == 3 && level0.allSatisfy { $0.count == 1 })
+        #expect(level0.first { $0.id == "g1:0:0:0" }?.center == a.display)
+        let level2 = PublicLocationGrid.clusters([a, b, c, a], level: 2)
+        let pair = level2.first { $0.id == "g1:2:0:0" }
+        #expect(pair?.count == 2)
+        // 한 변 4칸(800m) 사각형의 가운데 = 원점 + 400m
+        #expect(pair?.center == .init(eastMm: 1_000_400_000, northMm: 2_000_400_000))
+        #expect(level2.first { $0.id != "g1:2:0:0" }?.single == c)
     }
 
     @Test func hmacMessageEscapesLikeJSON() {

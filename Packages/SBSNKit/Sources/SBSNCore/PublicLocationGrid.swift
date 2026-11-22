@@ -169,19 +169,73 @@ public enum PublicLocationGrid {
         return maxClusterLevel
     }
 
-    /// 조회할 사각형(EPSG:5179 정수 mm, 닫힌 범위). 축마다 100칸을 넘으면 화면 가운데 100칸으로 줄이고 `narrowed`가 참이다
-    /// (앱은 "확대하면 더 보입니다"를 보인다).
-    public static func queryRect(west: Int64, south: Int64, east: Int64, north: Int64)
+    /// 조회할 사각형(EPSG:5179 정수 mm, 닫힌 범위, 규격 "화면이 100칸보다 넓을 때").
+    /// 화면이 100칸을 넘는 축만 화면 중심 칸 c 기준 c-50~c+49칸으로 줄이고(끝 경계에서 1mm를 뺀다) `narrowed`가 참이다
+    /// (앱은 "확대하면 더 보입니다"를 보인다). 서비스 범위 밖은 잘라 낸다.
+    public static func queryRect(west: Int64, south: Int64, east: Int64, north: Int64, center: ProjectedPoint)
         -> (west: Int64, south: Int64, east: Int64, north: Int64, narrowed: Bool) {
-        let limit = maxQueryCellsPerAxis * cellSizeMm
-        func clamp(_ low: Int64, _ high: Int64) -> (Int64, Int64, Bool) {
-            guard high - low > limit else { return (low, high, false) }
-            let center = low + (high - low) / 2
-            return (center - limit / 2, center - limit / 2 + limit, true)
+        func axis(_ low: Int64, _ high: Int64, centerMm: Int64, origin: Int64, service: Range<Int64>) -> (Int64, Int64, Bool) {
+            let lowCell = floorDiv(low - origin, cellSizeMm)
+            let highCell = floorDiv(high - origin, cellSizeMm)
+            var range = (low, high)
+            var narrowed = false
+            if highCell - lowCell + 1 > maxQueryCellsPerAxis {
+                let c = floorDiv(centerMm - origin, cellSizeMm)
+                range = (origin + (c - maxQueryCellsPerAxis / 2) * cellSizeMm,
+                         origin + (c + maxQueryCellsPerAxis / 2) * cellSizeMm - 1)
+                narrowed = true
+            }
+            return (max(range.0, service.lowerBound), min(range.1, service.upperBound - 1), narrowed)
         }
-        let (w, e, narrowedX) = clamp(west, east)
-        let (s, n, narrowedY) = clamp(south, north)
+        let (w, e, narrowedX) = axis(west, east, centerMm: center.eastMm, origin: originEastMm, service: serviceEastMm)
+        let (s, n, narrowedY) = axis(south, north, centerMm: center.northMm, origin: originNorthMm, service: serviceNorthMm)
         return (w, s, e, n, narrowedX || narrowedY)
+    }
+
+    /// 지도에 보일 작가 한 명(findLaunchPhotographersV1 결과)
+    public struct MapPhotographer: Sendable, Equatable {
+        public let uid: String
+        public let nickname: String
+        public let display: ProjectedPoint
+
+        public init(uid: String, nickname: String, display: ProjectedPoint) {
+            self.uid = uid
+            self.nickname = nickname
+            self.display = display
+        }
+    }
+
+    /// 같은 묶음 ID의 작가들. 한 명이면 그 작가의 표시점, 둘 이상이면 합쳐진 격자 사각형의 중심에 그린다.
+    public struct MapCluster: Sendable, Equatable, Identifiable {
+        public let id: String
+        public let members: [MapPhotographer]
+        public let center: ProjectedPoint
+
+        public var count: Int { members.count }
+        public var single: MapPhotographer? { members.count == 1 ? members[0] : nil }
+    }
+
+    /// 묶음(규격 5항): UID별로 한 번만 센다. 결과는 묶음 ID 순서.
+    public static func clusters(_ photographers: [MapPhotographer], level: Int) -> [MapCluster] {
+        var groups: [String: [MapPhotographer]] = [:]
+        var cells: [String: Cell] = [:]
+        var seen: Set<String> = []
+        for photographer in photographers where seen.insert(photographer.uid).inserted {
+            let cell = Cell(containing: photographer.display)
+            let id = cell.clusterID(level: level)
+            groups[id, default: []].append(photographer)
+            cells[id] = cell
+        }
+        let size = Int64(1) << level
+        return groups.keys.sorted().map { id in
+            let members = groups[id]!
+            if members.count == 1 { return MapCluster(id: id, members: members, center: members[0].display) }
+            let cell = cells[id]!
+            let west = originEastMm + floorDiv(cell.x, size) * size * cellSizeMm
+            let south = originNorthMm + floorDiv(cell.y, size) * size * cellSizeMm
+            return MapCluster(id: id, members: members,
+                              center: ProjectedPoint(eastMm: west + size * cellSizeMm / 2, northMm: south + size * cellSizeMm / 2))
+        }
     }
 
     // MARK: - 투영(EPSG:5179, Krüger 급수)

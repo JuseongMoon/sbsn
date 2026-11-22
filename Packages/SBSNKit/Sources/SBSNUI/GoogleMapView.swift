@@ -26,8 +26,8 @@ public struct MapPin: Identifiable, Equatable {
     public enum Style: Equatable {
         case me
         case photographer
-        /// 여러 작가를 묶은 원(인원수)
-        case cluster(Int)
+        /// 여러 작가를 묶은 원(인원수 글자, 잘린 조회면 "n+")
+        case cluster(String)
     }
 
     public let id: String
@@ -46,6 +46,12 @@ public struct MapPin: Identifiable, Equatable {
     }
 }
 
+/// 지도가 멈췄을 때 보이는 화면: 네 모서리와 네 변 가운데(끝값의 산술평균) 여덟 점과 카메라 중심(격자 규격 5항)
+public struct MapViewport: Equatable, Sendable {
+    public let points: [GeoPoint]
+    public let center: GeoPoint
+}
+
 /// SwiftUI용 Google 지도. MapKit과 한 화면에 섞지 않는다(Google 약관 3.2.3(e)).
 ///
 /// - `selection`: 누른 핀의 ID(지도 빈 곳을 누르면 nil)
@@ -59,16 +65,18 @@ public struct GoogleMapView: UIViewRepresentable {
     let showsMyLocation: Bool
     let bottomPadding: CGFloat
     let onUserMove: (() -> Void)?
+    let onIdle: ((MapViewport) -> Void)?
     @Environment(\.colorScheme) private var colorScheme
 
     public init(pins: [MapPin], selection: Binding<String?> = .constant(nil), framing: Int = 0, showsMyLocation: Bool = false,
-                bottomPadding: CGFloat = 0, onUserMove: (() -> Void)? = nil) {
+                bottomPadding: CGFloat = 0, onUserMove: (() -> Void)? = nil, onIdle: ((MapViewport) -> Void)? = nil) {
         self.pins = pins
         _selection = selection
         self.framing = framing
         self.showsMyLocation = showsMyLocation
         self.bottomPadding = bottomPadding
         self.onUserMove = onUserMove
+        self.onIdle = onIdle
     }
 
     /// 핀이 없을 때의 처음 화면(서울 시청 근처)
@@ -151,14 +159,14 @@ public struct GoogleMapView: UIViewRepresentable {
             case .photographer:
                 marker.iconView = nil
                 marker.icon = GMSMarker.markerImage(with: selected ? .systemRed : .systemOrange)
-            case .cluster(let count):
-                let label = UILabel(frame: CGRect(x: 0, y: 0, width: 40, height: 40))
-                label.text = "\(count)"
+            case .cluster(let text):
+                let label = UILabel(frame: CGRect(x: 0, y: 0, width: 44, height: 44))
+                label.text = text
                 label.textAlignment = .center
                 label.font = .preferredFont(forTextStyle: .headline)
                 label.textColor = .white
                 label.backgroundColor = .systemOrange
-                label.layer.cornerRadius = 20
+                label.layer.cornerRadius = 22
                 label.layer.masksToBounds = true
                 label.layer.borderColor = UIColor.white.cgColor
                 label.layer.borderWidth = 2
@@ -189,6 +197,22 @@ public struct GoogleMapView: UIViewRepresentable {
 
         public nonisolated func mapView(_ mapView: GMSMapView, didTapAt coordinate: CLLocationCoordinate2D) {
             MainActor.assumeIsolated { parent.selection = nil }
+        }
+
+        public nonisolated func mapView(_ mapView: GMSMapView, idleAt position: GMSCameraPosition) {
+            let target = position.target
+            MainActor.assumeIsolated {
+                guard let onIdle = parent.onIdle else { return }
+                let region = mapView.projection.visibleRegion()
+                func point(_ c: CLLocationCoordinate2D) -> GeoPoint { GeoPoint(latitude: c.latitude, longitude: c.longitude) }
+                func middle(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> GeoPoint {
+                    GeoPoint(latitude: (a.latitude + b.latitude) / 2, longitude: (a.longitude + b.longitude) / 2)
+                }
+                let points = [point(region.farLeft), point(region.farRight), point(region.nearLeft), point(region.nearRight),
+                              middle(region.farLeft, region.farRight), middle(region.nearLeft, region.nearRight),
+                              middle(region.farLeft, region.nearLeft), middle(region.farRight, region.nearRight)]
+                onIdle(MapViewport(points: points, center: point(target)))
+            }
         }
 
         public nonisolated func mapView(_ mapView: GMSMapView, willMove gesture: Bool) {
