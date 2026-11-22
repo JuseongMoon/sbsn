@@ -6,6 +6,7 @@ import SwiftUI
 /// 출시 로그인 시트(설계 문서 1.1, D051·L04·L06·L09·L28). 두 앱이 같이 쓴다.
 ///
 /// - Apple을 위에, Google을 아래에 같은 크기로 둔다. 만 14세 확인을 켜야 단추가 눌린다.
+/// - Google은 GoogleSignIn 계정 고르기 화면을 쓴다(앱 `.onOpenURL`에서 `GoogleSignInSupport.handle`).
 /// - 로그인하면 `saveLaunchProfileV1`으로 만 14세 확인을 저장하고 서버가 정한 닉네임을 받는다.
 /// - 디버그 빌드에서 개발용 에뮬레이터를 쓸 때만 비밀번호 시험 로그인을 보인다(L09).
 public struct SignInSheet: View {
@@ -49,11 +50,12 @@ public struct SignInSheet: View {
                     .disabled(!age14Confirmed || isWorking)
                     .accessibilityIdentifier("signIn.apple")
                     Button {
+                        Task { await finishGoogle() }
                     } label: {
-                        Label("Google로 계속하기(준비 중)", systemImage: "g.circle")
+                        Label("Google로 계속하기", systemImage: "g.circle")
                             .frame(maxWidth: .infinity, minHeight: 32)
                     }
-                    .disabled(true)
+                    .disabled(!age14Confirmed || isWorking)
                     .accessibilityIdentifier("signIn.google")
                 }
                 if Backend.emulator != nil {
@@ -122,6 +124,19 @@ public struct SignInSheet: View {
             let rawNonce = nonce
             await run { _ = try await AccountService.signIn(appleIDToken: token, rawNonce: rawNonce) }
         }
+    }
+
+    /// Google 계정 고르기 → 익명이면 연결, 이미 있는 계정이면 그 계정으로 로그인(Apple과 같다).
+    private func finishGoogle() async {
+        #if canImport(GoogleSignIn)
+        errorMessage = nil
+        do {
+            guard let tokens = try await GoogleSignInSupport.signIn() else { return }
+            await run { _ = try await AccountService.signIn(googleIDToken: tokens.idToken, accessToken: tokens.accessToken) }
+        } catch {
+            errorMessage = "Google 로그인에 실패했습니다: \(error.localizedDescription)"
+        }
+        #endif
     }
 
     /// 로그인한 뒤 만 14세 확인을 저장하고 닉네임을 받아 끝낸다.

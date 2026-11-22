@@ -1,5 +1,6 @@
 import CryptoKit
 import FirebaseAuth
+import FirebaseCore
 import FirebaseFunctions
 import Foundation
 
@@ -62,7 +63,12 @@ public enum AccountService {
 
     // MARK: - Google
 
-    /// Google 로그인 결과(ID 토큰·액세스 토큰)로 연결 또는 로그인한다. Google 로그인 화면은 Firebase Google 제공자를 켠 뒤 붙인다.
+    /// 이 앱의 Google OAuth 클라이언트 ID(GoogleService-Info.plist `CLIENT_ID`). Google 로그인 화면 설정에 쓴다.
+    public static var googleClientID: String? {
+        FirebaseApp.app()?.options.clientID
+    }
+
+    /// Google 로그인 결과(ID 토큰·액세스 토큰)로 연결 또는 로그인한다(익명이면 연결, 이미 있는 계정이면 그 계정으로, Apple과 같다).
     public static func signIn(googleIDToken: String, accessToken: String) async throws -> Account {
         try await linkOrSignIn(GoogleAuthProvider.credential(withIDToken: googleIDToken, accessToken: accessToken))
     }

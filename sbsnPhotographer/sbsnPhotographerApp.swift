@@ -21,6 +21,7 @@ struct sbsnPhotographerApp: App {
         WindowGroup {
             ContentView()
                 .environment(PhotographerSession.shared)
+                .onOpenURL { GoogleSignInSupport.handle($0) }
         }
     }
 }

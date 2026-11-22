@@ -22,6 +22,7 @@ struct sbsnApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .onOpenURL { GoogleSignInSupport.handle($0) }
         }
     }
 }

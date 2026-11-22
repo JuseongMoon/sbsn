@@ -20,3 +20,6 @@ firestore-debug.log
 
 # Python 캐시
 __pycache__/
+
+# Google 로그인 URL scheme 값(REVERSED_CLIENT_ID)
+Config/*.local.xcconfig

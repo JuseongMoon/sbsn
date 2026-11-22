@@ -33,6 +33,8 @@ let package = Package(
         .package(url: "https://github.com/firebase/firebase-ios-sdk", from: "13.1.1"),
         // 출시 지도(D051·L30). 11.3부터 최소 iOS 17. 맵 ID는 쓰지 않는다.
         .package(url: "https://github.com/googlemaps/ios-maps-sdk", .upToNextMajor(from: "11.4.0")),
+        // 출시 Google 로그인(D051·L04). 앱 URL scheme은 git 제외 Config/*.local.xcconfig의 REVERSED_CLIENT_ID.
+        .package(url: "https://github.com/google/GoogleSignIn-iOS", .upToNextMajor(from: "10.1.0")),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
@@ -81,6 +83,7 @@ let package = Package(
                 "SBSNCore", "SBSNBackend",
                 // iOS 전용 바이너리. 맥 `swift test` 빌드에서는 빠진다(코드는 #if canImport(GoogleMaps)).
                 .product(name: "GoogleMaps", package: "ios-maps-sdk", condition: .when(platforms: [.iOS])),
+                .product(name: "GoogleSignIn", package: "GoogleSignIn-iOS", condition: .when(platforms: [.iOS])),
             ],
             swiftSettings: [
                 .enableUpcomingFeature("ApproachableConcurrency"),

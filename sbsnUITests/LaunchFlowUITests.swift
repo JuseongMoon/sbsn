@@ -60,6 +60,56 @@ final class LaunchFlowUITests: XCTestCase {
         print("SBSN 로그아웃 뒤 익명 둘러보기")
     }
 
+    /// 고객: 로그인 시트의 "Google로 계속하기"가 Google 계정 화면을 연다(URL scheme 설정 확인). 실제 로그인은 하지 않고 취소한다.
+    func test_L5_googleSignInOpens() throws {
+        let app = XCUIApplication(bundleIdentifier: "com.ScienceFiction.sbsn")
+        app.launchArguments = ["-SBSNEmulatorHost", emulatorHost]
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["마이"].waitForExistence(timeout: 30))
+        app.tabBars.buttons["마이"].tap()
+        if app.buttons["my.signOut"].waitForExistence(timeout: 5) {
+            signOutOrDiagnose(app)
+        }
+        XCTAssertTrue(app.buttons["my.signIn"].waitForExistence(timeout: 10))
+        app.buttons["my.signIn"].tap()
+        let age = app.switches["signIn.age14"]
+        XCTAssertTrue(age.waitForExistence(timeout: 10))
+        if age.value as? String != "1" { age.switches.firstMatch.tap() }
+        let google = app.buttons["signIn.google"]
+        XCTAssertTrue(waitUntilTrue(timeout: 5) { google.isEnabled }, "Google 단추가 눌리지 않음")
+        google.tap()
+        // 웹 인증 세션은 먼저 시스템 확인 창("로그인하기 위해 'google.com'을 사용하려고 합니다")을 띄운다.
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let proceed = springboard.alerts.buttons["계속"]
+        XCTAssertTrue(proceed.waitForExistence(timeout: 15), "Google 로그인 확인 창이 뜨지 않음: \(app.staticTexts["signIn.error"].exists ? app.staticTexts["signIn.error"].label : "-")")
+        print("SBSN Google 확인 창: \(springboard.alerts.firstMatch.label)")
+        proceed.tap()
+        let web = app.webViews.firstMatch
+        XCTAssertTrue(web.waitForExistence(timeout: 30), "Google 계정 화면이 열리지 않음")
+        sleep(3)
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "Google 계정 화면"
+        shot.lifetime = .keepAlways
+        add(shot)
+        print("SBSN Google 계정 화면 열림")
+        let cancel = app.buttons["취소"].firstMatch
+        XCTAssertTrue(cancel.waitForExistence(timeout: 5))
+        cancel.tap()
+        XCTAssertTrue(age.waitForExistence(timeout: 10), "취소 뒤 로그인 시트로 돌아오지 않음")
+        sleep(1)
+        XCTAssertFalse(app.staticTexts["signIn.error"].exists, "취소했는데 오류 문구가 보임")
+        print("SBSN Google 취소 뒤 로그인 시트, 오류 없음")
+    }
+
+    private func waitUntilTrue(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if condition() { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        }
+        return condition()
+    }
+
     private func waitForDisappearance(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while element.exists, Date() < deadline { usleep(200_000) }

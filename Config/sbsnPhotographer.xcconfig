@@ -1,0 +1,6 @@
+// sbsnPhotographer 앱 기본 설정. Google 로그인 URL scheme(GoogleService-Info.plist의 REVERSED_CLIENT_ID)은
+// git에서 뺀 sbsnPhotographer.local.xcconfig에 둔다(공개 저장소). 없으면 비어 있고 Google 로그인 단추가 오류를 보인다.
+//
+//   GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.…
+GOOGLE_REVERSED_CLIENT_ID =
+#include? "sbsnPhotographer.local.xcconfig"
