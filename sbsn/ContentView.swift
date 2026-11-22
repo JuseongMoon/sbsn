@@ -5,6 +5,7 @@
 //  Created by 문주성 on 9/8/26.
 //
 
+import SBSNUI
 import SwiftUI
 
 /// 고객 앱의 하단 탭.
@@ -48,13 +49,8 @@ struct ContentView: View {
                 }
             }
         }
-        // 계정 삭제 뒤 알림. 로그아웃으로 탭이 다시 그려져도 보이게 뿌리에 둔다.
-        .alert(session.accountNotice ?? "", isPresented: Binding(
-            get: { session.accountNotice != nil },
-            set: { if !$0 { session.accountNotice = nil } }
-        )) {
-            Button("확인", role: .cancel) {}
-        }
+        // 계정 삭제 뒤 안내. 로그아웃으로 탭이 다시 그려져도 보이게 뿌리에 둔다.
+        .accountDeletionNotice(Binding(get: { session.accountNotice }, set: { session.accountNotice = $0 }))
         .environment(session)
         .environment(galleries)
         .task { await session.start() }

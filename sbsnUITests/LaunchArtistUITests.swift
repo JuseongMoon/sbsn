@@ -189,10 +189,17 @@ final class LaunchArtistUITests: XCTestCase {
         XCTAssertTrue(confirm.waitForExistence(timeout: 10), "삭제 확인 창이 없음")
         confirm.tap()
         // 요청 뒤 최대 10초 동안 완료를 보고 알림을 띄운다(에뮬레이터는 곧 끝나므로 "계정을 삭제했습니다.").
-        let notice = app.alerts["계정을 삭제했습니다."]
-        XCTAssertTrue(notice.waitForExistence(timeout: 30), "삭제 완료 알림이 없음: \(app.alerts.firstMatch.exists ? app.alerts.firstMatch.label : "-")")
-        print("SBSN 삭제 뒤 알림: \(notice.label)")
-        notice.buttons["확인"].tap()
+        let result = app.staticTexts["my.deleteAccount.result"]
+        if !result.waitForExistence(timeout: 30) {
+            print("SBSN 안내 구조:", app.debugDescription.replacingOccurrences(of: "\n", with: " || "))
+            XCTFail("삭제 안내가 없음")
+            return
+        }
+        print("SBSN 삭제 뒤 안내: \(result.label)")
+        XCTAssertEqual(result.label, "계정을 삭제했습니다.")
+        let done = app.buttons["my.deleteAccount.done"]
+        XCTAssertTrue(done.exists, "안내 확인 단추 식별자가 없음")
+        done.tap()
     }
 
     private func expectDeletionCompleted(uid: String) async throws {

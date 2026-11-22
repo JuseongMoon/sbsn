@@ -111,6 +111,44 @@ public struct AccountDeletionButton: View {
     }
 }
 
+extension View {
+    /// 계정 삭제 뒤 안내(한 번). 로그아웃으로 탭·로그인 관문이 바뀌어도 보이게 화면 뿌리에 붙인다.
+    /// 식별자: 안내 글 `my.deleteAccount.result`, 확인 단추 `my.deleteAccount.done`(Android와 같다).
+    /// SwiftUI 알림은 글·단추에 식별자를 넘기지 않아 작은 시트로 띄운다.
+    public func accountDeletionNotice(_ notice: Binding<String?>) -> some View {
+        sheet(isPresented: Binding(
+            get: { notice.wrappedValue != nil },
+            set: { if !$0 { notice.wrappedValue = nil } }
+        )) {
+            AccountDeletionNoticeView(text: notice.wrappedValue ?? "") {
+                notice.wrappedValue = nil
+            }
+            .presentationDetents([.height(220)])
+        }
+    }
+}
+
+struct AccountDeletionNoticeView: View {
+    let text: String
+    let onDone: () -> Void
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "person.crop.circle.badge.xmark")
+                .font(.largeTitle)
+                .foregroundStyle(.secondary)
+            Text(text)
+                .font(.headline)
+                .multilineTextAlignment(.center)
+                .accessibilityIdentifier("my.deleteAccount.result")
+            Button("확인", action: onDone)
+                .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("my.deleteAccount.done")
+        }
+        .padding(24)
+    }
+}
+
 /// 단추 없이 Apple 인증 창을 띄운다(재인증용). 끝날 때까지 자신을 잡아 둔다.
 @MainActor
 final class AppleAuthorization: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {

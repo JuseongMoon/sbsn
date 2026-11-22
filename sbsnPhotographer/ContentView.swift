@@ -39,13 +39,8 @@ struct ContentView: View {
                 tabs
             }
         }
-        // 계정 삭제 뒤 알림. 탭이 로그인 관문으로 바뀌어도 보이게 뿌리에 둔다.
-        .alert(session.accountNotice ?? "", isPresented: Binding(
-            get: { session.accountNotice != nil },
-            set: { if !$0 { session.accountNotice = nil } }
-        )) {
-            Button("확인", role: .cancel) {}
-        }
+        // 계정 삭제 뒤 안내. 탭이 로그인 관문으로 바뀌어도 보이게 뿌리에 둔다.
+        .accountDeletionNotice($session.accountNotice)
     }
 
     private var tabs: some View {
