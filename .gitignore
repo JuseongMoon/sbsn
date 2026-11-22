@@ -11,6 +11,8 @@ DerivedData/
 
 # Firebase 앱 설정. 공개 저장소이므로 커밋하지 않고 각자 내려받는다.
 GoogleService-Info.plist
+# 앱별 비밀 설정(Google Maps iOS 키 등). 키 값은 커밋하지 않는다. 형식은 docs/design/launch-app-design.md 1.2절.
+SBSNSecrets.plist
 
 # Firebase 에뮬레이터·CLI 로그(백엔드는 웹 프로젝트로 옮겼다. 혹시 여기서 돌렸을 때 대비)
 firebase-debug.log
