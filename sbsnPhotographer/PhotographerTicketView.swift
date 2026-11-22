@@ -9,6 +9,7 @@ struct PhotographerTicketView: View {
     @Environment(PhotographerSession.self) private var session
     @State private var locations: [LocationSample] = []
     @State private var showsChat = false
+    @State private var showsMap = false
     @State private var confirmsCancel = false
     @State private var confirmsEnd = false
     @State private var isWorking = false
@@ -110,9 +111,8 @@ struct PhotographerTicketView: View {
     }
 
     private func meeting(_ ticket: TicketRecord) -> some View {
+        // 위치 지도는 채팅과 분리해 "위치" 단추로 연다(D051).
         VStack(spacing: 0) {
-            ParticipantsMapView(participants: participants(ticket))
-                .frame(height: 240)
             TicketChatView(ticketId: ticket.id, myUid: ticket.photographerUid, otherLabel: "고객")
             VStack(spacing: 8) {
                 Text(meetingStatus(ticket))
@@ -140,8 +140,13 @@ struct PhotographerTicketView: View {
         .navigationTitle("고객 만나기")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            Button("위치", systemImage: "map") { showsMap = true }
+                .accessibilityIdentifier("meetup.showMap")
             Menu("더 보기", systemImage: "ellipsis.circle") { plannedMenuItems }
                 .accessibilityIdentifier("photographer.more")
+        }
+        .sheet(isPresented: $showsMap) {
+            MeetupMapSheet(participants: participants(ticket), otherLabel: "고객")
         }
         .confirmationDialog("이 촬영을 취소할까요?", isPresented: $confirmsCancel, titleVisibility: .visible) {
             Button("촬영 취소", role: .destructive) {

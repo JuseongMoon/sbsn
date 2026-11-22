@@ -3,7 +3,7 @@ import SBSNUI
 import SwiftUI
 import UIKit
 
-/// 매칭 뒤 촬영이 시작되기 전까지의 화면: 서로의 위치 지도, 작가 확인 상태, 채팅.
+/// 매칭 뒤 촬영이 시작되기 전까지의 화면: 작가 확인 상태와 채팅. 서로의 위치 지도는 "위치" 단추로 여는 별도 화면이다(D051).
 ///
 /// `sharing`이 받은 위치를 보여 주기만 한다. 위치를 올리고 받는 루프는 `TicketBackgroundWork`가 맡는다.
 struct TicketMeetupView: View {
@@ -14,6 +14,7 @@ struct TicketMeetupView: View {
     let now: Date
 
     @Environment(\.openURL) private var openURL
+    @State private var showsMap = false
 
     private var participants: [ParticipantsMapView.Participant] {
         var result: [ParticipantsMapView.Participant] = []
@@ -39,14 +40,22 @@ struct TicketMeetupView: View {
     }
 
     var body: some View {
+        // 위치 지도는 채팅과 분리해 "위치" 단추로 연다(D051).
         VStack(spacing: 0) {
-            ParticipantsMapView(participants: participants)
-                .frame(height: 260)
             statusLines
                 .padding(.horizontal)
                 .padding(.vertical, 8)
             Divider()
             TicketChatView(ticketId: ticket.id, myUid: myUid, otherLabel: ticket.photographerDisplayName)
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("위치", systemImage: "map") { showsMap = true }
+                    .accessibilityIdentifier("meetup.showMap")
+            }
+        }
+        .sheet(isPresented: $showsMap) {
+            MeetupMapSheet(participants: participants, otherLabel: ticket.photographerDisplayName.isEmpty ? "작가" : ticket.photographerDisplayName)
         }
         // 위치 주고받기는 화면이 아니라 뿌리 화면의 `TicketBackgroundWork`가 돌린다(다른 탭에 있어도 이어지게).
     }

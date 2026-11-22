@@ -419,7 +419,7 @@ final class PhotographerSession {
     private func startHeartbeat() {
         heartbeat = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(15))
+                try? await Task.sleep(for: .seconds(LocationSample.meetupPublishInterval))
                 guard let self else { return }
                 if location.isTracking, let point = location.latest {
                     handleLocation(point)
@@ -432,7 +432,7 @@ final class PhotographerSession {
         if let ticket {
             // 매칭 뒤 만나기 전까지만: 만나야 하므로 자주, 정확하게. 촬영이 시작되면 보내지 않는다.
             guard ticket.phase.isActive, ticket.phase != .shooting,
-                  shouldPublish(point, minimumDistance: 10, minimumInterval: 15) else { return }
+                  shouldPublish(point, minimumDistance: 10, minimumInterval: LocationSample.meetupPublishInterval) else { return }
             markPublished(point)
             Task {
                 try? await TicketLocationService.publish(ticketId: ticket.id, uid: ticket.photographerUid, point: point)

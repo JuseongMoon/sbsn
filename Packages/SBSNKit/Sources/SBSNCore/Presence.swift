@@ -40,6 +40,9 @@ public struct GeoPoint: Sendable, Equatable, Hashable {
 
 /// 티켓 안에서 공유하는 한 사람의 위치(`tickets/{ticketId}/locations/{uid}`)
 public struct LocationSample: Sendable, Equatable, Identifiable {
+    /// 매칭부터 촬영 시작까지 정밀 위치를 보내는 간격(D051·L14). 멈춰 있어도 이 간격으로 다시 보낸다.
+    public static let meetupPublishInterval: TimeInterval = 10
+
     public let uid: String
     public var point: GeoPoint
     public var updatedAt: Date?
