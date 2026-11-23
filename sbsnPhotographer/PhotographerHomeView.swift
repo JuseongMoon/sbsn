@@ -30,6 +30,8 @@ struct PhotographerHomeView: View {
                 }
             }
 
+            PhotographerSanctionSection()
+
             if let ticket = session.ticket {
                 Section("진행 중인 촬영") {
                     NavigationLink(value: PhotographerRoute.live(ticket.id)) {

@@ -12,16 +12,27 @@ import SBSNCore
 /// - 시스템 메시지(수락·거절·만료·시작·종료·취소·연장)는 서버가 방에 넣는다. 앱은 그것만 그린다(W12).
 public enum LaunchMatchService {
     public enum Failure: LocalizedError, Equatable {
-        /// 서버가 받아들이지 않았다(서버 문구 그대로: 이미 진행 중, 작가가 받을 수 없음, 참여자 아님 등)
-        case rejected(String)
+        /// 서버가 받아들이지 않았다(서버 문구 그대로). `reason`은 이유 코드(`ARTIST_ON_BREAK` 등, 없으면 nil)
+        case rejected(String, reason: String?)
         /// 네트워크 등 그 밖의 오류
         case other(String)
 
         public var errorDescription: String? {
             switch self {
-            case .rejected(let message), .other(let message): message
+            case .rejected(let message, _), .other(let message): message
             }
         }
+
+        /// 서버 이유 코드(웹 launch-phase-2.md "출시 callable 오류 이유 코드")
+        public var reason: String? {
+            if case .rejected(_, let reason) = self { return reason }
+            return nil
+        }
+    }
+
+    /// callable 오류의 `details.reason`
+    static func reason(of error: NSError) -> String? {
+        (error.userInfo[FunctionsErrorDetailsKey] as? [String: Any])?["reason"] as? String
     }
 
     static let region = "asia-northeast3"
@@ -202,7 +213,7 @@ public enum LaunchMatchService {
             payload["action"] = "cancel"
             payload["cancelReason"] = reason.rawValue
             if let note = note?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty {
-                payload["cancelNote"] = String(note.prefix(LaunchMatch.CancelReason.noteLimit))
+                payload["cancelNote"] = LaunchText.truncated(note, limit: LaunchMatch.CancelReason.noteLimit)
             }
         case .agreeCancel: payload["action"] = "agree_cancel"
         case .disagreeCancel: payload["action"] = "disagree_cancel"
@@ -344,8 +355,8 @@ public enum LaunchMatchService {
             return .other(error.localizedDescription)
         }
         switch code {
-        case .failedPrecondition, .permissionDenied, .invalidArgument, .alreadyExists, .resourceExhausted, .unauthenticated:
-            return .rejected(nsError.localizedDescription)
+        case .failedPrecondition, .permissionDenied, .invalidArgument, .alreadyExists, .resourceExhausted, .unauthenticated, .notFound:
+            return .rejected(nsError.localizedDescription, reason: reason(of: nsError))
         default:
             return .other(nsError.localizedDescription)
         }

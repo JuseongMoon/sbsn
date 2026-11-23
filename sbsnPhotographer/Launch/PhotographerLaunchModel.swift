@@ -15,6 +15,10 @@ final class PhotographerLaunchModel {
     private(set) var recentTickets: [LaunchMatch.Ticket] = []
     private(set) var activeTicket: LaunchMatch.Ticket?
     private(set) var listenError: String?
+    /// 제재 상태(W6). 1분마다 다시 읽는다.
+    private(set) var sanction: LaunchArtistProfileService.SanctionStatus?
+    /// 검토 요청을 보낸 뒤 안내(이 실행 동안)
+    var reviewStatus: String?
     /// 채팅 탭 화면 경로(방 ID)
     var chatPath: [String] = []
     /// 다른 화면에서 탭을 바꿔 달라는 요청
@@ -40,9 +44,17 @@ final class PhotographerLaunchModel {
         activeTicket = nil
         listenError = nil
         chatPath = []
+        sanction = nil
+        reviewStatus = nil
         guard let uid else { return }
         tasks = [
             Task { [weak self] in await self?.listen(LaunchMatchService.rooms(uid: uid, role: .photographer)) { $0.rooms = $1 } },
+            Task { [weak self] in
+                while !Task.isCancelled {
+                    if let status = try? await LaunchArtistProfileService.sanctionStatus() { self?.sanction = status }
+                    try? await Task.sleep(for: .seconds(60))
+                }
+            },
             Task { [weak self] in await self?.listen(LaunchMatchService.unreadCounts(uid: uid)) { $0.unread = $1 } },
             Task { [weak self] in
                 await self?.listen(LaunchMatchService.pendingRequests(photographerUid: uid)) { model, requests in

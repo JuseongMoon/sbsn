@@ -26,8 +26,14 @@ final class LaunchMatchUITests: XCTestCase {
         XCTAssertTrue(toggle.waitForExistence(timeout: 20))
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
         XCTAssertTrue(photographerApp.buttons["availability.on"].waitForExistence(timeout: 5), "켜기 시트가 없음")
+        attachScreenshot("L8 켜기 시트", app: photographerApp)
         photographerApp.buttons["availability.on"].tap()
         dismissNotificationPrompt()
+        let onStatus = photographerApp.staticTexts["home.status"]
+        if !onStatus.waitForExistence(timeout: 15) {
+            attachScreenshot("L8 켜기 뒤", app: photographerApp)
+            XCTFail("켜기 뒤 상태 줄이 없음: \(photographerApp.staticTexts["photographer.error"].exists ? photographerApp.staticTexts["photographer.error"].label : "-")")
+        }
         let published = try await waitFor("publicPhotographers/\(artist.uid)", timeout: 90)
         XCTAssertTrue(published, "작가 발행이 지도에 없음")
         let profile = try await admin.document("users/\(artist.uid)")
@@ -55,7 +61,12 @@ final class LaunchMatchUITests: XCTestCase {
         XCTAssertTrue(status.waitForExistence(timeout: 10), "작가 카드가 없음")
         print("SBSN 카드 상태: \(status.label)")
         XCTAssertTrue(status.label.hasPrefix("촬영 가능"), "같은 위치인데 \(status.label)")
-        app.buttons["map.card.chat"].tap()
+        // 프로필(W9): 작가가 저장한 소개가 보이고 [채팅하기]로 이어진다.
+        _ = try await admin.call("saveLaunchProfileV1", idToken: artistToken,
+                                 data: ["age14Confirmed": true, "nickname": NSNull(), "bio": "궁 촬영 전문", "recommendedShootMinutes": 25])
+        app.buttons["map.card.profile"].tap()
+        XCTAssertTrue(app.staticTexts["궁 촬영 전문"].waitForExistence(timeout: 15), "프로필 소개가 없음")
+        app.buttons["profile.chat"].tap()
 
         // 글 → 연락처는 가리고 보내기
         let input = app.textViews["chat.input"].exists ? app.textViews["chat.input"] : app.textFields["chat.input"]
@@ -164,6 +175,22 @@ final class LaunchMatchUITests: XCTestCase {
         XCTAssertTrue(status.label.hasPrefix("촬영 가능 · 1km · "))
         let device = try await admin.document("launchDevices/\(artist.uid)")
         XCTAssertEqual(device?.int("radiusMeters"), 1000, "반경이 서버에 없음")
+
+        // 프로필 편집(W9): 마이 → 프로필 → 소개 → 저장
+        app.tabBars.buttons["마이"].tap()
+        app.buttons["my.profile"].tap()
+        let bio = app.textViews["profile.bio"].exists ? app.textViews["profile.bio"] : app.textFields["profile.bio"]
+        XCTAssertTrue(bio.waitForExistence(timeout: 15), "프로필 편집 화면이 아님")
+        bio.tap()
+        bio.typeText("야경 촬영 좋아해요")
+        app.buttons["profile.save"].tap()
+        XCTAssertTrue(app.staticTexts["저장했어요"].waitForExistence(timeout: 15), "프로필 저장 안내가 없음")
+        let savedProfile = try await admin.document("users/\(artist.uid)")
+        XCTAssertEqual(savedProfile?.string("bio"), "야경 촬영 좋아해요")
+        XCTAssertEqual(savedProfile?.int("recommendedShootMinutes"), 20, "추천 시간 기본값 20분이 저장되지 않음")
+        app.navigationBars.buttons.firstMatch.tap()
+        app.tabBars.buttons["촬영"].tap()
+        XCTAssertFalse(app.descendants(matching: .any)["sanction.limited"].exists, "제재가 없는데 제한 배너가 보임")
 
         // 고객(REST): 프로필 → 방 → 신청
         let customer = try await admin.createTestAccount(prefix: "customer")

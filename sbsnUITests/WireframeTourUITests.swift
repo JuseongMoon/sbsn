@@ -140,15 +140,7 @@ final class WireframeTourUITests: XCTestCase {
         XCTAssertTrue(app.switches["photographer.available"].waitForExistence(timeout: 20), "촬영 가능 토글이 없음")
         shot("작가-촬영-대기", app)
 
-        // 촬영 탭: P1~P3
-        openPlanned("activityArea", app, shot: "작가-P01-활동위치")
-        back(app)
-        openPlanned("breakTime", app, shot: "작가-P02-휴게")
-        tapID("sample.breakToggle", app)
-        shot("작가-P02-휴게중", app)
-        back(app)
-        openPlanned("requestPolicy", app, shot: "작가-P03-수락거절")
-        back(app)
+        // 촬영 탭 P1~P3(활동 위치·휴게·수락 거절)은 2단계 실제 화면이 돼 예시를 뺐다.
 
         // 내역 탭: P9~P13
         app.tabBars.buttons["내역"].tap()

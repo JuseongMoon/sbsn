@@ -102,6 +102,8 @@ struct PhotographerMyTab: View {
             List {
                 PhotographerAccountSection()
                 Section("작가 정보") {
+                    NavigationLink("프로필(추천 시간·소개·사진)") { PhotographerProfileEditor() }
+                        .accessibilityIdentifier("my.profile")
                     PhotographerSampleLink(PhotographerFeatures.portfolio)
                     PhotographerSampleLink(PhotographerFeatures.registration)
                     PhotographerSampleLink(PhotographerFeatures.originals)

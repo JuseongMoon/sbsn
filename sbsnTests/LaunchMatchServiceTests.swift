@@ -202,6 +202,38 @@ final class LaunchMatchServiceTests: XCTestCase {
         print("SBSN 알림 설치 등록·해제 통과")
     }
 
+    /// 작가 프로필(W9) 저장·사진·공개 읽기와 제재 상태(W6) 읽기
+    func test_profileAndSanction() async throws {
+        let artist = try await rest.createAccount(prefix: "artist")
+        _ = try await AccountService.signInForTesting(email: artist.email, password: artist.password)
+        _ = try await AccountService.saveProfile(age14Confirmed: true, nickname: "작가1")
+        try await rest.approve(artistUid: artist.uid)
+        let jpeg = try XCTUnwrap(UIGraphicsImageRenderer(size: CGSize(width: 80, height: 80)).image { context in
+            UIColor.systemOrange.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 80, height: 80))
+        }.jpegData(compressionQuality: 0.8))
+        try await LaunchArtistProfileService.save(recommendedShootMinutes: 25, bio: "궁 촬영 전문", photoJPEG: jpeg)
+        let profile = try await LaunchArtistProfileService.profile(artistUid: artist.uid)
+        XCTAssertEqual(profile.nickname, "작가1")
+        XCTAssertEqual(profile.recommendedShootMinutes, 25)
+        XCTAssertEqual(profile.bio, "궁 촬영 전문")
+        let photoPath = try XCTUnwrap(profile.photoPath)
+        let photo = try await LaunchArtistProfileService.photoData(path: photoPath)
+        XCTAssertFalse(photo.isEmpty)
+        // 사진 없이 다시 저장하면 사진은 그대로
+        try await LaunchArtistProfileService.save(recommendedShootMinutes: 30, bio: "궁 촬영 전문", photoJPEG: nil)
+        let again = try await LaunchArtistProfileService.profile(artistUid: artist.uid)
+        XCTAssertEqual(again.recommendedShootMinutes, 30)
+        XCTAssertEqual(again.photoPath, photoPath)
+
+        let sanction = try await LaunchArtistProfileService.sanctionStatus()
+        XCTAssertEqual(sanction.missedCount7d, 0)
+        XCTAssertFalse(sanction.isRestricted())
+        let latest = try await LaunchArtistProfileService.latestSanctionEventId(uid: artist.uid)
+        XCTAssertNil(latest)
+        print("SBSN 프로필·제재 통과: 사진 \(photo.count)B")
+    }
+
     // MARK: - 도우미
 
     static func newId() -> String { UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased() }

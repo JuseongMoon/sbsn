@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import SBSNBackend
 import SBSNCore
+import UserNotifications
 
 /// 출시 1단계 공개 위치 발행(D059, L07·L08, 웹 격자 규격 "기기 세션"). 늘 돈다(D063, MVP presence 발행은 지웠다).
 /// Android `LaunchPresencePublisher`(bfe54c7·fbba4b9)와 같은 동작이다.
@@ -69,6 +70,24 @@ final class LaunchPresencePublisher {
         } else {
             UserDefaults.standard.removeObject(forKey: Self.settingsKey)
         }
+        scheduleEndingReminder(settings?.endsAt)
+    }
+
+    static let endingReminderID = "launch.availabilityEnding"
+
+    /// 끝나는 시각 30분 전 로컬 알림(설계 2.3). 끄거나 시각을 바꾸면 다시 잡는다.
+    private func scheduleEndingReminder(_ endsAt: Date?) {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [Self.endingReminderID])
+        guard let endsAt else { return }
+        let fireAt = endsAt.addingTimeInterval(-30 * 60)
+        guard fireAt > Date() else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "곧 촬영 가능이 꺼져요"
+        content.body = "\(LaunchTime.clock(endsAt))에 꺼져요. 더 하려면 촬영 탭 [변경]에서 끝나는 시각을 늘려 주세요."
+        content.sound = .default
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: fireAt.timeIntervalSinceNow, repeats: false)
+        center.add(UNNotificationRequest(identifier: Self.endingReminderID, content: content, trigger: trigger))
     }
 
     private static func send(_ settings: Settings?, deviceSessionId: String) async throws {

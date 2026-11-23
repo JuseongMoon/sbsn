@@ -197,7 +197,7 @@ public struct LaunchChatRoomView<Top: View, Bottom: View>: View {
     }
 
     private func send(_ text: String) async {
-        guard [Character](text).count <= ChatMessage.textLimit else {
+        guard LaunchText.length(text) <= ChatMessage.textLimit else {
             errorMessage = "메시지는 1,000자까지 보낼 수 있어요."
             return
         }
@@ -216,7 +216,7 @@ public struct LaunchChatRoomView<Top: View, Bottom: View>: View {
         isSending = true
         defer { isSending = false }
         do {
-            guard let data = try await item.loadTransferable(type: Data.self), let jpeg = Self.chatJPEG(from: data) else {
+            guard let data = try await item.loadTransferable(type: Data.self), let jpeg = LaunchImageEncoding.jpeg(from: data) else {
                 errorMessage = "사진을 읽지 못했어요."
                 return
             }
@@ -227,25 +227,12 @@ public struct LaunchChatRoomView<Top: View, Bottom: View>: View {
         }
     }
 
-    /// 긴 변 1,280px, 메타데이터(GPS 포함) 없는 JPEG(품질 0.8, Android와 같은 값, L19)
-    static func chatJPEG(from data: Data, longSide: CGFloat = 1280) -> Data? {
-        guard let image = UIImage(data: data) else { return nil }
-        let size = image.size
-        let scale = min(1, longSide / max(size.width, size.height))
-        let target = CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        // 픽셀만 다시 그려 원본 EXIF·GPS가 따라오지 않는다.
-        return UIGraphicsImageRenderer(size: target, format: format).image { _ in
-            image.draw(in: CGRect(origin: .zero, size: target))
-        }.jpegData(compressionQuality: 0.8)
-    }
-
     static func newRequestId() -> String {
         UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
     }
 
     // MARK: - 듣기·읽음
+
 
     private func listen() async {
         do {

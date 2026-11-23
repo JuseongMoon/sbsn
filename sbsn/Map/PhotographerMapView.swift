@@ -21,6 +21,7 @@ struct PhotographerMapView: View {
     @State private var launchMap: LaunchMapState?
     @State private var location = CustomerLocationReader.shared
     @State private var openRoomId: String?
+    @State private var profileArtist: PublicLocationGrid.MapPhotographer?
     @State private var showsSignIn = false
     @State private var isOpeningChat = false
     @AppStorage("SBSNLaunchNickname") private var nickname = ""
@@ -68,6 +69,11 @@ struct PhotographerMapView: View {
             .task { await location.track() }
             .navigationDestination(item: $openRoomId) { roomId in
                 CustomerChatRoomScreen(roomId: roomId)
+            }
+            .navigationDestination(item: Binding(get: { profileArtist?.uid }, set: { if $0 == nil { profileArtist = nil } })) { uid in
+                CustomerPhotographerProfileView(artistUid: uid, statusLine: profileArtist.map(statusLine)) {
+                    startChat(uid)
+                }
             }
             .sheet(isPresented: $showsSignIn) {
                 SignInSheet(allowsLater: true) { name in
@@ -126,21 +132,35 @@ struct PhotographerMapView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Button {
-                if AccountService.current?.isLinked == true {
-                    Task { await openChat(artistUid: photographer.uid) }
-                } else {
-                    showsSignIn = true
+            HStack {
+                Button {
+                    profileArtist = photographer
+                } label: {
+                    Text("프로필").frame(maxWidth: .infinity)
                 }
-            } label: {
-                Text("채팅하기").frame(maxWidth: .infinity)
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("map.card.profile")
+                Button {
+                    startChat(photographer.uid)
+                } label: {
+                    Text("채팅하기").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isOpeningChat)
+                .accessibilityIdentifier("map.card.chat")
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(isOpeningChat)
-            .accessibilityIdentifier("map.card.chat")
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("map.card")
+    }
+
+    /// 연결된 계정이면 바로 방을 열고, 익명이면 로그인 시트 뒤 이어서 연다.
+    private func startChat(_ artistUid: String) {
+        if AccountService.current?.isLinked == true {
+            Task { await openChat(artistUid: artistUid) }
+        } else {
+            showsSignIn = true
+        }
     }
 
     private func openChat(artistUid: String) async {

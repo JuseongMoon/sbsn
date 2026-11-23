@@ -161,3 +161,17 @@ struct LaunchNotificationTests {
         #expect(LaunchNotification(userInfo: ["type": "message", "ticketId": "x"]) == nil, "MVP 알림은 출시 알림이 아니다")
     }
 }
+
+/// 서버와 같은 코드포인트 세기
+struct LaunchTextTests {
+    @Test func countsCodePointsLikeServer() {
+        #expect(LaunchText.length("안녕") == 2)
+        // 가족 이모지는 글자 하나지만 코드포인트 7개(서버 [...text].length = 7)
+        let family = "👨‍👩‍👧‍👦"
+        #expect(family.count == 1 && LaunchText.length(family) == 7)
+        #expect(ChatMessage.validText(String(repeating: family, count: 143)) == nil, "143 × 7 = 1001 코드포인트는 서버가 거부")
+        #expect(ChatMessage.validText(String(repeating: family, count: 142)) != nil)
+        #expect(LaunchText.truncated("ab" + family, limit: 5) == "ab", "글자를 끊지 않는다")
+        #expect(LaunchText.truncated("abc", limit: 5) == "abc")
+    }
+}

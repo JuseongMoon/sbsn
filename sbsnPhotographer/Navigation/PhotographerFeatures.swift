@@ -3,19 +3,11 @@ import SBSNUI
 /// 작가 앱에서 기획에는 있지만 아직 실제 데이터와 연결하지 않은 메뉴(예시 화면, D032). 근거는 총괄 문서 `UI_WIREFRAME_PLAN.md` 2절.
 enum PhotographerFeatures {
     /// 명세 순서(P1~P18). 개발 메뉴의 "예시 화면 전체"가 쓴다. P6 10분 타이머와 P8 사진 검수·공개는 실제 화면이 됐다(D036).
-    static let all = [activityArea, breakTime, requestPolicy, customerBrief, safety, cameraGuide,
+    /// P1 활동 위치·반경, P2 휴게, P3 수락·거절은 2단계 실제 화면(켜기 시트·휴게·새 신청 카드)이 돼 뺐다.
+    static let all = [customerBrief, safety, cameraGuide,
                       history, sales, settlement, feedback, disputes, portfolio, registration, originals, support, terms]
 
     // 촬영 탭
-    static let activityArea = PlannedFeature(
-        id: "activityArea", title: "활동 위치·반경", summary: "촬영할 지역과 이동할 수 있는 거리를 정하는 화면이 들어갈 자리입니다.",
-        plannedItems: ["활동 지역", "반경"], systemImage: "mappin.and.ellipse")
-    static let breakTime = PlannedFeature(
-        id: "breakTime", title: "휴게", summary: "잠깐 쉬는 동안 새 매칭을 받지 않게 하는 화면이 들어갈 자리입니다.",
-        plannedItems: ["휴게 시작·끝", "휴게 시간 기록"], systemImage: "cup.and.saucer")
-    static let requestPolicy = PlannedFeature(
-        id: "requestPolicy", title: "수락·거절 설정", summary: "새 요청을 수락하거나 거절하는 화면이 들어갈 자리입니다. 지금은 고객이 확정하면 바로 매칭됩니다.",
-        plannedItems: ["요청 수락", "거절 사유"], systemImage: "hand.raised")
     static let customerBrief = PlannedFeature(
         id: "customerBrief", title: "고객 브리프", summary: "고객이 남긴 요청 사항을 보는 화면이 들어갈 자리입니다.",
         plannedItems: ["인원", "원하는 분위기", "소통 언어"], systemImage: "doc.text")

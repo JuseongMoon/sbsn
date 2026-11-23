@@ -66,15 +66,22 @@ public enum LaunchArtistService {
         }
     }
 
+    /// 서버 거부의 이유 코드(`details.reason`, 웹 launch-phase-2.md "출시 callable 오류 이유 코드")로 나눈다.
+    /// 코드가 없으면(1단계 서버·Firebase 자체 거부·네트워크) callable 상태로 기본 안내를 고른다.
     static func failure(from error: Error) -> Failure {
         let nsError = error as NSError
         guard nsError.domain == FunctionsErrorDomain, let code = FunctionsErrorCode(rawValue: nsError.code) else {
             return .other(error.localizedDescription)
         }
+        switch LaunchMatchService.reason(of: nsError) {
+        case "DEVICE_SESSION_MISMATCH": return .replacedByOtherDevice
+        case "LOCATION_RATE_LIMITED": return .rateLimited
+        case .some: return code == .unavailable || code == .deadlineExceeded ? .other(nsError.localizedDescription) : .rejected(nsError.localizedDescription)
+        case nil: break
+        }
         switch code {
-        // 다른 기기가 켰을 때와 끝 시각·제재(2단계)가 같은 코드로 온다. 서버 문구로 나눈다.
-        case .failedPrecondition:
-            return nsError.localizedDescription.contains("다른 기기") ? .replacedByOtherDevice : .rejected(nsError.localizedDescription)
+        // 이유 코드가 없는 1단계 서버는 다른 기기가 켰을 때만 이 상태를 돌려준다.
+        case .failedPrecondition: return .replacedByOtherDevice
         case .resourceExhausted: return .rateLimited
         case .permissionDenied, .unauthenticated, .invalidArgument: return .rejected(nsError.localizedDescription)
         default: return .other(nsError.localizedDescription)

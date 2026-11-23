@@ -16,7 +16,7 @@ struct CustomerSampleScreen: View {
             case CustomerFeatures.photographerList.id: SamplePhotographerList()
             case CustomerFeatures.conditions.id: SampleConditionsScreen()
             case CustomerFeatures.photographerProfile.id:
-                SampleProfileView(CustomerSampleData.profile, footerLine: "작가 선택은 지도 카드에서 합니다")
+                SampleProfileView(CustomerSampleData.profile, footerLine: "예시입니다. 실제 프로필은 지도에서 작가 핀을 눌러 [프로필]로 봅니다")
             case CustomerFeatures.briefing.id: SampleBriefingScreen()
             case CustomerFeatures.safety.id:
                 SampleSafetyView(reportTarget: "작가", showsStopRequest: false, tips: CustomerSampleData.safetyTips)

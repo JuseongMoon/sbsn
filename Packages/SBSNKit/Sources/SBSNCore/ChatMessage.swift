@@ -20,7 +20,8 @@ public struct ChatMessage: Sendable, Equatable, Identifiable {
     /// 보낼 수 있게 다듬는다. 비어 있거나 너무 길면 nil.
     public static func validText(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, trimmed.count <= textLimit else { return nil }
+        // 서버와 같이 코드포인트로 센다(LaunchText).
+        guard !trimmed.isEmpty, LaunchText.length(trimmed) <= textLimit else { return nil }
         return trimmed
     }
 }

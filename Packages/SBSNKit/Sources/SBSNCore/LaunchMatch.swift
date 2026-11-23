@@ -367,3 +367,26 @@ public enum LaunchMatch {
         }
     }
 }
+
+/// 서버와 같은 글자 수 세기(총괄 구현 결정): 서버·Android는 유니코드 코드포인트로 센다(JS `[...text].length`).
+/// 앱의 `Character`(grapheme)로 세면 이모지 결합 문자가 많은 글이 서버에서 길이 초과로 거부될 수 있다.
+public enum LaunchText {
+    /// 코드포인트 수
+    public static func length(_ text: String) -> Int {
+        text.unicodeScalars.count
+    }
+
+    /// 코드포인트 `limit` 안에서 글자(grapheme)를 끊지 않고 자른다.
+    public static func truncated(_ text: String, limit: Int) -> String {
+        guard length(text) > limit else { return text }
+        var result = ""
+        var used = 0
+        for character in text {
+            let size = character.unicodeScalars.count
+            guard used + size <= limit else { break }
+            result.append(character)
+            used += size
+        }
+        return result
+    }
+}

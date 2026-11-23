@@ -3,7 +3,8 @@ import SBSNUI
 /// 고객 앱에서 기획에는 있지만 아직 실제 데이터와 연결하지 않은 메뉴(예시 화면, D032). 근거는 총괄 문서 `UI_WIREFRAME_PLAN.md` 1절.
 enum CustomerFeatures {
     /// 명세 순서(C1~C19, C15 계정 연결은 실제 로그인으로 바뀌어 뺐다). 개발 메뉴의 "예시 화면 전체"가 쓴다.
-    static let all = [photographerList, conditions, photographerProfile, briefing, safety, recommendation, basket, review, events,
+    /// C03 작가 프로필은 2단계 실제 화면(지도 카드 [프로필])이 돼 뺐다(예시 작가 목록 안에서만 열린다).
+    static let all = [photographerList, conditions, briefing, safety, recommendation, basket, review, events,
                       album, orders, retouch, shareAndPrint, profile, help, inquiry, refund, terms]
 
     // 촬영 탭
