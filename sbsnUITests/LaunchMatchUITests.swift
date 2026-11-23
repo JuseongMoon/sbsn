@@ -180,6 +180,7 @@ final class LaunchMatchUITests: XCTestCase {
         app.buttons["my.profile"].tap()
         let bio = app.textViews["profile.bio"].exists ? app.textViews["profile.bio"] : app.textFields["profile.bio"]
         XCTAssertTrue(bio.waitForExistence(timeout: 15), "프로필 편집 화면이 아님")
+        XCTAssertTrue(waitUntil(timeout: 20) { !app.activityIndicators["profile.loading"].exists && bio.isEnabled }, "프로필을 다 읽지 못함")
         bio.tap()
         bio.typeText("야경 촬영 좋아해요")
         app.buttons["profile.save"].tap()
@@ -263,9 +264,11 @@ final class LaunchMatchUITests: XCTestCase {
         app.buttons["break.start"].tap()
         app.buttons["break.reason.meal"].firstMatch.tap()
         XCTAssertTrue(waitUntil(timeout: 15) { app.staticTexts["home.status"].label.hasPrefix("휴게 중 · 식사") }, "휴게 상태가 아님")
-        let (onBreak, _) = try await admin.call("requestLaunchMatchV1", idToken: customerToken,
-                                                data: ["roomId": roomId, "minutes": 20, "clientRequestId": UUID().uuidString.lowercased()])
+        let (onBreak, onBreakBody) = try await admin.call("requestLaunchMatchV1", idToken: customerToken,
+                                                          data: ["roomId": roomId, "minutes": 20, "clientRequestId": UUID().uuidString.lowercased()])
         XCTAssertNotEqual(onBreak, 200, "휴게 중 신청이 접수됨")
+        let breakReason = ((onBreakBody["error"] as? [String: Any])?["details"] as? [String: Any])?["reason"] as? String
+        XCTAssertEqual(breakReason, "ARTIST_ON_BREAK")
         app.buttons["break.end"].tap()
         XCTAssertTrue(waitUntil(timeout: 15) { app.staticTexts["home.status"].label.hasPrefix("촬영 가능") }, "휴게가 끝나지 않음")
         attachScreenshot("L9 작가 홈", app: app)

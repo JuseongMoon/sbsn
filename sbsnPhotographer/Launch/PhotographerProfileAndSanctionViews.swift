@@ -140,6 +140,11 @@ struct PhotographerProfileEditor: View {
                 Text(message).font(.footnote).accessibilityIdentifier("profile.message")
             }
         }
+        // 저장된 프로필을 읽어 오는 동안 입력을 막는다. 늦게 온 값이 먼저 쓴 내용을 덮지 않게(총괄 결정, Android c3f8306과 같다).
+        .disabled(isLoading)
+        .overlay {
+            if isLoading { ProgressView().accessibilityIdentifier("profile.loading") }
+        }
         .navigationTitle("프로필")
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
