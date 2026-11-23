@@ -110,6 +110,7 @@ struct BreakReasonDialog: ViewModifier {
 /// [거절]은 사유 보기를 띄우고 보기를 누르면 바로 거절된다(D066 S3). [수락]은 확인 없이 보낸다(5분 안).
 struct PhotographerRequestCard: View {
     let request: LaunchMatch.Request
+    @Environment(PhotographerLaunchModel.self) private var launch
     /// 홈에서는 그 대화방을 연다. 대화방 안에서는 nil(단추를 숨긴다).
     var onOpenRoom: (() -> Void)?
     @State private var choosesDecline = false
@@ -165,15 +166,18 @@ struct PhotographerRequestCard: View {
         defer { isWorking = false }
         do {
             let result = try await LaunchMatchService.respond(requestId: request.id, answer)
+            // 늦게 누르면 카드가 구독에서 빠지며 사라지므로 결과는 알림 줄로 보인다(총괄 결정).
+            error = nil
             switch result.status {
-            case "accepted", "declined": error = nil
-            case "expired": error = "이미 만료된 신청이에요"
-            case "auto_declined": error = "다른 신청을 이미 수락했어요"
-            case "cancelled": error = "고객이 신청을 취소했어요"
-            default: error = nil
+            case "expired": launch.toast = "이미 만료된 신청이에요"
+            case "auto_declined": launch.toast = "다른 신청을 이미 수락했어요"
+            case "cancelled": launch.toast = "고객이 신청을 취소했어요"
+            default: break
             }
         } catch {
+            // 카드가 곧 사라질 수 있어 알림 줄에도 보인다(Android 4cb2804와 같다).
             self.error = error.localizedDescription
+            launch.toast = error.localizedDescription
         }
     }
 }
@@ -434,7 +438,11 @@ struct PhotographerLaunchTicketView: View {
         defer { isWorking = false }
         do {
             let status = try await LaunchMatchService.respondExtension(ticketId: ticket.id, extensionId: request.id, accept: accept)
-            if status == "expired" { error = "1분이 지나 연장 요청이 만료됐어요" }
+            switch status {
+            case "expired": launch.toast = "1분이 지나 연장 요청이 만료됐어요"
+            case "cancelled": launch.toast = "연장 요청이 취소됐어요"
+            default: break
+            }
             pendingExtension = nil
         } catch {
             self.error = error.localizedDescription

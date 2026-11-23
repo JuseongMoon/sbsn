@@ -5,12 +5,14 @@ import XCTest
 ///   xcodebuild test -scheme sbsn -destination 'platform=iOS Simulator,id=<기기>' \
 ///     -only-testing:sbsnUITests/WireframeTourUITests
 ///
-/// 작가 앱은 미리 설치해 둔다. 지도·탭 목록에서 닿는 예시 화면은 그 경로로 열고, 티켓이 있어야 닿는 화면
+/// 작가 앱은 미리 설치해 둔다. 두 앱 모두 공용 개발 에뮬레이터(`-SBSNEmulatorHost`)로 띄우고, 작가 앱은 시험 계정으로 로그인한다
+/// (D063부터 작가 앱은 로그인 관문 뒤에 탭이 있다). 지도·탭 목록에서 닿는 예시 화면은 그 경로로 열고, 티켓이 있어야 닿는 화면
 /// (촬영 안내, 안전·긴급, 추천 순서, 선택 바구니, 리뷰, 고객 브리프, 타이머, 연결 가이드, 검수, 채팅 신고·차단)은
 /// 마이 > 개발 > "예시 화면 전체"로 연다. 서버에는 쓰지 않는다: 확정·촬영 가능은 누르지 않는다.
 /// `TEST_RUNNER_SBSN_SHOT_DIR`을 주면 캡처를 그 폴더에 PNG로도 남긴다.
 @MainActor
 final class WireframeTourUITests: XCTestCase {
+    var host: String { ProcessInfo.processInfo.environment["SBSN_EMULATOR_HOST"] ?? "127.0.0.1" }
     let customerApp = XCUIApplication(bundleIdentifier: "com.ScienceFiction.sbsn")
     let photographerApp = XCUIApplication(bundleIdentifier: "com.ScienceFiction.sbsnPhotographer")
     let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
@@ -23,6 +25,7 @@ final class WireframeTourUITests: XCTestCase {
 
     func test_customerTour() throws {
         let app = customerApp
+        app.launchArguments = ["-SBSNEmulatorHost", host]
         app.launch()
         dismissAlerts()
         XCTAssertTrue(app.tabBars.buttons["촬영"].waitForExistence(timeout: 30), "탭 바가 없음(로그인 확인)")
@@ -132,10 +135,24 @@ final class WireframeTourUITests: XCTestCase {
         print("SBSN 고객 예시 화면 \(Set(opened).count)개 열림: \(Set(opened).sorted())")
     }
 
-    func test_photographerTour() throws {
+    func test_photographerTour() async throws {
         let app = photographerApp
+        app.launchArguments = ["-SBSNEmulatorHost", host]
         app.launch()
         dismissAlerts()
+        // 로그인 관문이면 시험 계정으로 들어간다(촬영 가능은 켜지 않는다).
+        let age = app.switches["signIn.age14"]
+        if age.waitForExistence(timeout: 15) {
+            let account = try await EmulatorAdmin(host: host).createTestAccount(prefix: "artist")
+            if age.value as? String != "1" { age.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap() }
+            app.textFields["signIn.test.email"].tap()
+            app.textFields["signIn.test.email"].typeText(account.email)
+            app.textFields["signIn.test.password"].tap()
+            app.textFields["signIn.test.password"].typeText(account.password)
+            app.buttons["signIn.test.submit"].tap()
+            dismissAlerts()
+        }
+        app.tabBars.buttons["촬영"].tap()
         XCTAssertTrue(app.tabBars.buttons["촬영"].waitForExistence(timeout: 30), "탭 바가 없음(로그인 확인)")
         XCTAssertTrue(app.switches["photographer.available"].waitForExistence(timeout: 20), "촬영 가능 토글이 없음")
         shot("작가-촬영-대기", app)

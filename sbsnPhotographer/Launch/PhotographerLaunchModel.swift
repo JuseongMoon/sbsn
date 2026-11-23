@@ -19,6 +19,8 @@ final class PhotographerLaunchModel {
     private(set) var sanction: LaunchArtistProfileService.SanctionStatus?
     /// 검토 요청을 보낸 뒤 안내(이 실행 동안)
     var reviewStatus: String?
+    /// 몇 초 보이는 알림 줄(늦은 응답 결과 등, 화면 뿌리의 `launchToast`)
+    var toast: String?
     /// 채팅 탭 화면 경로(방 ID)
     var chatPath: [String] = []
     /// 다른 화면에서 탭을 바꿔 달라는 요청
@@ -27,6 +29,8 @@ final class PhotographerLaunchModel {
     @ObservationIgnored private var tasks: [Task<Void, Never>] = []
     @ObservationIgnored private var locationTask: Task<Void, Never>?
     @ObservationIgnored var latestLocation: () -> GeoPoint? = { nil }
+    /// 출시 티켓이 만나는 단계(시작 대기)에 들어가거나 나올 때(세션이 위치 사용을 맞춘다)
+    @ObservationIgnored var onMeetupChange: ((Bool) -> Void)?
 
     var totalUnread: Int { unread.values.reduce(0, +) }
 
@@ -36,6 +40,7 @@ final class PhotographerLaunchModel {
         tasks = []
         locationTask?.cancel()
         locationTask = nil
+        onMeetupChange?(false)
         self.uid = uid
         rooms = []
         unread = [:]
@@ -109,6 +114,7 @@ final class PhotographerLaunchModel {
 
     /// 시작 대기 동안 10초마다 내 위치를 티켓에 올린다. 시작·취소되면 멈춘다(규칙도 그때 닫는다).
     private func followMeetupLocation() {
+        onMeetupChange?(activeTicket?.status == .matched)
         guard let uid, let ticket = activeTicket, ticket.status == .matched else {
             locationTask?.cancel()
             locationTask = nil

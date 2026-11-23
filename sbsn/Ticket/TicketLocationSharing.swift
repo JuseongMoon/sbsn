@@ -3,6 +3,7 @@ import Observation
 import SBSNBackend
 import SBSNCore
 import SBSNUI
+import UIKit
 
 /// 매칭 뒤 만나는 동안의 위치 공유: 작가 위치를 듣고 내 위치를 올린다.
 ///
@@ -50,6 +51,9 @@ final class TicketLocationSharing {
     }
 
     func shareMyLocation() async {
+        // 앞으로 돌아와 다시 시작할 때 뒤로 가기 전 위치를 올리지 않는다(새 위치가 올 때까지 기다린다).
+        latestLocation = nil
+        lastPublished = nil
         authorization.requestWhenInUseIfNeeded()
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.receiveLocationUpdates() }
@@ -61,6 +65,7 @@ final class TicketLocationSharing {
         do {
             for try await update in CLLocationUpdate.liveUpdates() {
                 guard let location = update.location else { continue }
+                if UIApplication.shared.applicationState != .active { CustomerLocationReader.backgroundUpdates += 1 }
                 latestLocation = location
                 myPoint = SBSNCore.GeoPoint(location.coordinate)
                 if let lastPublished,

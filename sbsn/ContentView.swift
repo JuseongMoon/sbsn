@@ -56,6 +56,7 @@ struct ContentView: View {
         }
         // 계정 삭제 뒤 안내. 로그아웃으로 탭이 다시 그려져도 보이게 뿌리에 둔다.
         .accountDeletionNotice(Binding(get: { session.accountNotice }, set: { session.accountNotice = $0 }))
+        .launchToast(Binding(get: { launch.toast }, set: { launch.toast = $0 }))
         .environment(session)
         .environment(galleries)
         .environment(launch)

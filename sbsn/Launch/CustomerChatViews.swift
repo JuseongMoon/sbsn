@@ -179,10 +179,18 @@ struct CustomerRoomBanner: View {
         isWorking = true
         defer { isWorking = false }
         do {
-            _ = try await LaunchMatchService.respond(requestId: request.id, .cancel)
+            let result = try await LaunchMatchService.respond(requestId: request.id, .cancel)
             error = nil
+            // 이미 끝난 신청이면 막대가 사라지므로 결과는 알림 줄로 보인다(총괄 결정).
+            switch result.status {
+            case "accepted": launch.toast = "작가가 이미 수락했어요. 촬영 탭에서 보세요"
+            case "declined", "auto_declined": launch.toast = "작가가 이미 답했어요"
+            case "expired": launch.toast = "이미 만료된 신청이에요"
+            default: break
+            }
         } catch {
             self.error = error.localizedDescription
+            launch.toast = error.localizedDescription
         }
     }
 }
@@ -199,6 +207,7 @@ struct CustomerRequestBar: View {
     @State private var error: String?
     @State private var location = CustomerLocationReader.shared
     @State private var authorization = CustomerLocationAuthorization()
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -219,7 +228,10 @@ struct CustomerRequestBar: View {
             .accessibilityIdentifier("request.open")
         } else {
             panel
-                .task { await location.track() }
+                .task(id: scenePhase == .active) {
+                    guard scenePhase == .active else { return }
+                    await location.track()
+                }
                 .task(id: location.projected.map { "\($0.eastMm / 50_000):\($0.northMm / 50_000)" } ?? "none") {
                     eligibility = await CustomerRequestEligibility.check(artistUid: room.photographerUid, customer: location.projected)
                     if case .allowed(let row) = eligibility, let recommended = row.recommendedShootMinutes, minutes == 20 {

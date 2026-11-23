@@ -26,7 +26,10 @@ final class PhotographerLocationTracker: NSObject {
     @ObservationIgnored var onLocation: ((GeoPoint) -> Void)?
 
     @ObservationIgnored private let manager = CLLocationManager()
-    @ObservationIgnored private(set) var isTracking = false
+    /// 위치 수신 중(개발 메뉴·시험이 본다)
+    private(set) var isTracking = false
+    /// 멈춘 뒤에도 Core Location이 넘긴 위치 수(0이어야 한다, 개발 메뉴·시험 확인용)
+    private(set) var updatesAfterStop = 0
 
     override init() {
         super.init()
@@ -53,10 +56,14 @@ final class PhotographerLocationTracker: NSObject {
         }
     }
 
+    /// 모든 위치 수신을 멈춘다: 수신 중지, 백그라운드 수신 끔, 상태 표시줄 위치 표시 끔. 이 앱은 중요 위치 변경·지역 감시를 쓰지 않는다.
     func stop() {
         isTracking = false
         manager.stopUpdatingLocation()
         manager.allowsBackgroundLocationUpdates = false
+        manager.showsBackgroundLocationIndicator = false
+        // 멈춘 뒤 낡은 위치를 올리지 않게 지운다(발행기·만나는 위치 루프가 nil이면 보내지 않는다).
+        latest = nil
         if status == .tracking || status == .waitingForAuthorization {
             status = .idle
         }
@@ -81,7 +88,10 @@ final class PhotographerLocationTracker: NSObject {
     }
 
     private func received(_ location: CLLocation) {
-        guard isTracking else { return }
+        guard isTracking else {
+            updatesAfterStop += 1
+            return
+        }
         let point = GeoPoint(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
         latest = point
         status = .tracking

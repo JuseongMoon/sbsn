@@ -12,11 +12,16 @@ struct TicketBackgroundWork: View {
     @Environment(CustomerSession.self) private var session
     @Environment(GalleryStore.self) private var galleries
 
+    @Environment(\.scenePhase) private var scenePhase
+    static let sharesMVPMeetupLocation = false
+
     var body: some View {
         Color.clear
             .task(id: workspace.listenerGeneration) { await workspace.listenToTicket() }
-            .task(id: workspace.isMeeting) {
-                guard workspace.isMeeting else { return }
+            // 옛 MVP 티켓은 만나는 위치를 주고받지 않는다(D063으로 MVP 매칭이 끝났다. 기기에 남은 진행 티켓이 위치를 붙잡지 않게).
+            // 출시 티켓의 만나는 위치는 `CustomerLaunchTicketView`가 앱이 앞에 있을 때만 주고받는다(L13·L14).
+            .task(id: workspace.isMeeting && scenePhase == .active) {
+                guard Self.sharesMVPMeetupLocation, workspace.isMeeting, scenePhase == .active else { return }
                 let sharing = workspace.locationSharing
                 await withTaskGroup(of: Void.self) { group in
                     group.addTask { await sharing.listenToOthers() }

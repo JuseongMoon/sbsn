@@ -44,11 +44,13 @@ struct ContentView: View {
         }
         // 계정 삭제 뒤 안내. 탭이 로그인 관문으로 바뀌어도 보이게 뿌리에 둔다.
         .accountDeletionNotice($session.accountNotice)
+        .launchToast(Binding(get: { launch.toast }, set: { launch.toast = $0 }))
         .environment(launch)
         // 출시 대화·신청·티켓은 연결된 계정만 듣는다(규칙).
         .task(id: "\(session.uid ?? "-")#\(session.account?.isLinked == true)") {
             let session = session
             launch.latestLocation = { session.location.latest }
+            launch.onMeetupChange = { session.setLaunchMeetupActive($0) }
             launch.start(uid: session.account?.isLinked == true ? session.uid : nil)
             await LaunchPush.registerIfLinked(role: .photographer)
         }

@@ -54,9 +54,8 @@ final class LaunchMatchUITests: XCTestCase {
         try signIn(at: app, gate: false, account: customer)
         XCTAssertTrue(app.descendants(matching: .any)["my.nickname"].waitForExistence(timeout: 30))
         app.tabBars.buttons["촬영"].tap()
-        let marker = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "marker.\(nickname)")).firstMatch
-        XCTAssertTrue(marker.waitForExistence(timeout: 90), "지도에 작가 핀이 없음")
-        marker.tap()
+        // 같은 칸에 다른 시험 작가(공용 에뮬레이터의 Android 시험 등)가 있으면 묶음으로 보인다. 묶음을 차례로 눌러 목록에서 고른다.
+        XCTAssertTrue(openCard(of: nickname, in: app, timeout: 120), "지도에서 작가를 찾지 못함")
         let status = app.staticTexts["map.card.status"]
         XCTAssertTrue(status.waitForExistence(timeout: 10), "작가 카드가 없음")
         print("SBSN 카드 상태: \(status.label)")
@@ -313,6 +312,29 @@ final class LaunchMatchUITests: XCTestCase {
     }
 
     // MARK: - 도우미
+
+    /// 지도에서 그 작가 카드를 연다: 단독 핀이면 누르고, 묶음이면 하나씩 눌러 목록에 그 작가가 있으면 고른다.
+    private func openCard(of nickname: String, in app: XCUIApplication, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        let marker = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "marker.\(nickname)")).firstMatch
+        let row = app.buttons["map.cluster.\(nickname)"]
+        while Date() < deadline {
+            if marker.exists {
+                marker.tap()
+                return app.staticTexts["map.card.status"].waitForExistence(timeout: 10)
+            }
+            let clusters = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "cluster.")).allElementsBoundByIndex
+            for cluster in clusters where cluster.exists && cluster.isHittable {
+                cluster.tap()
+                if row.waitForExistence(timeout: 3) {
+                    row.tap()
+                    return app.staticTexts["map.card.status"].waitForExistence(timeout: 10)
+                }
+            }
+            sleep(5)
+        }
+        return false
+    }
 
     private func waitUntil(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)

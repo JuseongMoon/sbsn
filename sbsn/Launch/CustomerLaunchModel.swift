@@ -1,5 +1,6 @@
 import CoreLocation
 import Observation
+import UIKit
 import SBSNBackend
 import SBSNCore
 
@@ -22,6 +23,8 @@ final class CustomerLaunchModel {
     var chatPath: [String] = []
     /// 다른 화면에서 탭을 바꿔 달라는 요청(뿌리 화면이 받아 지운다)
     var requestedTab: CustomerTab?
+    /// 몇 초 보이는 알림 줄(늦은 응답 결과 등)
+    var toast: String?
 
     @ObservationIgnored private var tasks: [Task<Void, Never>] = []
 
@@ -110,13 +113,15 @@ final class CustomerLaunchModel {
 }
 
 /// 고객 현재 위치(활동 반경 판정용, D065). 위치는 기기에서만 쓰고 서버로 보내지 않는다.
-/// 화면이 보이는 동안 `track()`을 돌린다(`CLLocationUpdate.liveUpdates`, 앱이 앞에 있을 때만).
+/// 화면이 보이고 앱이 앞에 있는 동안만 `track()`을 돌린다(L13). 화면은 `scenePhase`가 바뀌면 작업을 끝내고 다시 시작한다.
 @Observable
 @MainActor
 final class CustomerLocationReader {
     static let shared = CustomerLocationReader()
 
     private(set) var latest: CLLocation?
+    /// 앱이 앞에 있지 않을 때 받은 위치 수(0이어야 한다, 개발 메뉴·시험 확인용). 만나는 위치 공유 몫까지 더한다.
+    static var backgroundUpdates = 0
 
     /// EPSG:5179 mm
     var projected: PublicLocationGrid.ProjectedPoint? {
@@ -126,7 +131,9 @@ final class CustomerLocationReader {
     func track() async {
         do {
             for try await update in CLLocationUpdate.liveUpdates() {
-                if let location = update.location { latest = location }
+                guard let location = update.location else { continue }
+                if UIApplication.shared.applicationState != .active { Self.backgroundUpdates += 1 }
+                latest = location
             }
         } catch {}
     }

@@ -227,6 +227,10 @@ struct PhotographerDeveloperPage: View {
                 LabeledContent("출시 발행", value: session.launchPublisher.status ?? "-")
                     .font(.caption)
                     .accessibilityIdentifier("dev.launchPublish")
+                // 위치를 쓰는지(촬영 가능 중이거나 만나는 동안만 켜짐)와 멈춘 뒤 받은 위치 수(0이어야 한다)
+                LabeledContent("위치 사용", value: "\(session.location.isTracking ? "켜짐" : "꺼짐") · 멈춘 뒤 받은 위치 \(session.location.updatesAfterStop)회")
+                    .font(.caption)
+                    .accessibilityIdentifier("dev.locationUsage")
             }
             #if DEBUG
             // 출시 로그인 제공자 시험(총괄 순서 2번, sbsn-dev는 Auth만·함수 호출 없음)

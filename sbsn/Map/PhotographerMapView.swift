@@ -20,6 +20,7 @@ struct PhotographerMapView: View {
     @State private var lastViewport: MapViewport?
     @State private var launchMap: LaunchMapState?
     @State private var location = CustomerLocationReader.shared
+    @Environment(\.scenePhase) private var scenePhase
     @State private var openRoomId: String?
     @State private var profileArtist: PublicLocationGrid.MapPhotographer?
     @State private var showsSignIn = false
@@ -66,7 +67,11 @@ struct PhotographerMapView: View {
             .toolbar { plannedMenus }
             .task { authorization.requestWhenInUseIfNeeded() }
             .task { await refreshLaunchMapPeriodically() }
-            .task { await location.track() }
+            // 앱이 앞에 있을 때만 위치를 받는다(L13). 뒤로 가면 작업이 끝나고 앞으로 오면 다시 받는다.
+            .task(id: scenePhase == .active) {
+                guard scenePhase == .active else { return }
+                await location.track()
+            }
             .navigationDestination(item: $openRoomId) { roomId in
                 CustomerChatRoomScreen(roomId: roomId)
             }
@@ -91,9 +96,52 @@ struct PhotographerMapView: View {
     // MARK: - 작가 카드(2단계)
 
     /// 누른 핀의 작가(한 명짜리 핀만)
+    /// 누른 묶음(둘 이상). 가장 크게 확대해도 같은 200m 칸의 작가들은 한 묶음이라, 묶음을 누르면 목록에서 고르게 한다.
+    private var selectedCluster: PublicLocationGrid.MapCluster? {
+        guard let selectedUid, selectedUid.hasPrefix("cluster."), let launchMap else { return nil }
+        return launchMap.clusters.first { "cluster.\($0.id)" == selectedUid && $0.count > 1 }
+    }
+
+    private func clusterList(_ cluster: PublicLocationGrid.MapCluster) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("이 근처 작가 \(cluster.count)명")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    selectedUid = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                }
+                .accessibilityLabel("닫기")
+            }
+            ForEach(cluster.members.prefix(8), id: \.uid) { member in
+                Button {
+                    selectedUid = "launch.\(member.uid)"
+                } label: {
+                    HStack {
+                        Text(member.nickname)
+                        Spacer()
+                        Text(statusLine(member))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                .accessibilityIdentifier("map.cluster.\(member.nickname)")
+            }
+            if cluster.count > 8 {
+                Text("확대하면 더 보입니다").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("map.cluster")
+    }
+
     private var selectedPhotographer: PublicLocationGrid.MapPhotographer? {
         guard let selectedUid, let launchMap else { return nil }
-        return launchMap.clusters.compactMap(\.single).first { "launch.\($0.uid)" == selectedUid }
+        // 한 명짜리 핀이거나, 묶음 목록에서 고른 작가
+        return launchMap.clusters.flatMap(\.members).first { "launch.\($0.uid)" == selectedUid }
     }
 
     private func statusLine(_ photographer: PublicLocationGrid.MapPhotographer) -> String {
@@ -287,12 +335,15 @@ struct PhotographerMapView: View {
     }
 
     private var hasBottomPanel: Bool {
-        selectedPhotographer != nil || session.lockWarning != nil || mapError != nil || authorization.isDenied
+        selectedPhotographer != nil || selectedCluster != nil || session.lockWarning != nil || mapError != nil || authorization.isDenied
             || showsNoPhotographers || showsSearching
     }
 
     private var bottomPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if let cluster = selectedCluster {
+                clusterList(cluster)
+            }
             if let photographer = selectedPhotographer {
                 photographerCard(photographer)
             }

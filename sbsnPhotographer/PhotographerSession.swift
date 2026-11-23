@@ -67,7 +67,6 @@ final class PhotographerSession {
     @ObservationIgnored private var lastPublishedAt: Date?
     @ObservationIgnored private var hasStarted = false
     @ObservationIgnored private var attachingTicketID: String?
-    @ObservationIgnored private var heartbeat: Task<Void, Never>?
     @ObservationIgnored private var deviceLog: DeviceConditionLog?
     @ObservationIgnored private lazy var uploadQueue = GalleryUploadQueue(
         models: { [unowned self] in Array(galleries.values) },
@@ -118,7 +117,6 @@ final class PhotographerSession {
             self?.setAvailable(false)
             self?.errorMessage = message
         }
-        startHeartbeat()
         let deviceLog = DeviceConditionLog { [unowned self] in
             DeviceConditionLog.Context(isAvailable: isAvailable, phase: ticket.map { "\($0.phase)" } ?? "none")
         }
@@ -149,7 +147,7 @@ final class PhotographerSession {
             if UserDefaults.standard.bool(forKey: Self.availableKey) {
                 // 지난번에 켜 둔 "촬영 가능"을 이어 간다. 위치가 오면 출시 발행기가 다시 발행한다.
                 isAvailable = true
-                location.start()
+                refreshLocationUsage()
                 // 출시 공개 위치는 저장한 세션으로 발행만 해서 소유권을 확인한다(켜기를 다시 보내지 않는다, 격자 규격).
                 if !launchPublisher.resume(uid: uid) {
                     setAvailable(false)
@@ -196,10 +194,8 @@ final class PhotographerSession {
                 Task { await TicketService.acknowledge(ticketId: record.id) }
             }
         case .shooting:
-            // 선별 흐름은 촬영 중에 위치가 필요 없다(만나기 위치 공유는 시작에서 멈춘다). 배터리를 아끼려고 끈다.
-            if record.isCurated, !isAvailable {
-                location.stop()
-            }
+            // 촬영 중에는 만나는 위치가 필요 없다(L14). 촬영 가능이 꺼져 있으면 위치를 끈다.
+            break
         case .ended:
             if record.isCurated {
                 beginGallery(for: record)
@@ -212,6 +208,7 @@ final class PhotographerSession {
             }
         }
         if previous?.phase != record.phase {
+            refreshLocationUsage()
             // 단계가 바뀌면 티켓 안 위치를 다음 위치부터 바로 보내도록 발행 기록을 지운다.
             lastPublishedAt = nil
             lastPublishedPoint = nil
@@ -359,7 +356,28 @@ final class PhotographerSession {
         ticketTask = nil
         ticket = nil
         UserDefaults.standard.removeObject(forKey: Self.activeTicketKey)
-        if !isAvailable {
+        refreshLocationUsage()
+    }
+
+    // MARK: - 위치를 쓰는 때(출시 기준)
+
+    /// 출시 티켓이 매칭 뒤 시작 전(만나는 위치)인지. 출시 상태 모델이 알려 준다.
+    private(set) var launchMeetupActive = false
+
+    func setLaunchMeetupActive(_ active: Bool) {
+        guard launchMeetupActive != active else { return }
+        launchMeetupActive = active
+        refreshLocationUsage()
+    }
+
+    /// 위치 수신을 지금 상태에 맞춘다. 촬영 가능 중이거나 만나는 동안만 켜고, 그 밖에는 모두 멈춘다(`LocationUse`).
+    /// 0.2(3)에서는 서버 상태로 "촬영 가능"이 꺼질 때 위치를 멈추지 않는 갈래가 있어 밤새 백그라운드 위치가 돌았다.
+    /// 위치를 켜고 끄는 곳은 이 함수 하나다.
+    func refreshLocationUsage() {
+        let needed = LocationUse.photographerNeedsLocation(isAvailable: isAvailable, launchMeetup: launchMeetupActive)
+        if needed {
+            location.start()
+        } else if location.isTracking {
             location.stop()
         }
     }
@@ -403,7 +421,7 @@ final class PhotographerSession {
             isAvailable = true
             UserDefaults.standard.set(true, forKey: Self.availableKey)
             errorMessage = nil
-            location.start()
+            refreshLocationUsage()
             requestNotificationAuthorizationIfNeeded()
             // 출시 공개 위치(D059): 켜는 순간 새 세션으로 소유권을 가져오고 60초마다 표시점을 발행한다. 반경·끝 시각은 2단계(W5).
             let settings = settings ?? lastAvailabilitySettings
@@ -416,29 +434,17 @@ final class PhotographerSession {
         } else {
             isAvailable = false
             UserDefaults.standard.set(false, forKey: Self.availableKey)
-            if ticket == nil {
-                location.stop()
-            }
+            refreshLocationUsage()
             Task { await launchPublisher.turnOff(uid: uid) }
         }
     }
 
-    /// 위치는 10m 움직여야 새로 오므로, 한자리에 서 있어도 살아 있음을 알리게 15초마다 마지막 위치로 발행 여부를 다시 본다.
-    /// 백그라운드 위치 수신이 켜져 있는 동안은 앱이 멈추지 않아 이 반복도 계속 돈다.
-    private func startHeartbeat() {
-        heartbeat = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(LocationSample.meetupPublishInterval))
-                guard let self else { return }
-                if location.isTracking, let point = location.latest {
-                    handleLocation(point)
-                }
-            }
-        }
-    }
+    /// 옛 MVP 티켓 안 만나기 위치 공유는 하지 않는다(D063, 기기에 남은 진행 티켓이 위치를 올리지 않게).
+    /// 출시 티켓의 만나는 위치는 `PhotographerLaunchModel`이, 공개 지도 위치는 출시 발행기가 따로 보낸다.
+    static let sharesMVPMeetupLocation = false
 
-    /// 티켓 안 만나기 위치 공유. 대기 중 공개 위치는 출시 발행기가 60초마다 `location.latest`로 따로 보낸다.
     private func handleLocation(_ point: GeoPoint) {
+        guard Self.sharesMVPMeetupLocation else { return }
         // 매칭 뒤 만나기 전까지만: 만나야 하므로 자주, 정확하게. 촬영이 시작되면 보내지 않는다.
         guard let ticket, ticket.phase.isActive, ticket.phase != .shooting,
               shouldPublish(point, minimumDistance: 10, minimumInterval: LocationSample.meetupPublishInterval) else { return }
@@ -581,7 +587,8 @@ final class PhotographerSession {
         ticketTask?.cancel()
         ticket = nil
         isAvailable = false
-        location.stop()
+        launchMeetupActive = false
+        refreshLocationUsage()
         UserDefaults.standard.removeObject(forKey: Self.activeTicketKey)
         UserDefaults.standard.set(false, forKey: Self.availableKey)
         do {
@@ -610,7 +617,8 @@ final class PhotographerSession {
         ticketTask?.cancel()
         ticket = nil
         isAvailable = false
-        location.stop()
+        launchMeetupActive = false
+        refreshLocationUsage()
         UserDefaults.standard.removeObject(forKey: Self.activeTicketKey)
         UserDefaults.standard.set(false, forKey: Self.availableKey)
         uid = current

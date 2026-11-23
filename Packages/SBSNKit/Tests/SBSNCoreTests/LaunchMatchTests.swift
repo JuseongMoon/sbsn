@@ -175,3 +175,14 @@ struct LaunchTextTests {
         #expect(LaunchText.truncated("abc", limit: 5) == "abc")
     }
 }
+
+/// 위치를 쓰는 때(팀원 제보 2026-11-23): 작가는 촬영 가능 중이거나 만나는 동안만
+struct LocationUseTests {
+    @Test func photographerUsesLocationOnlyWhenNeeded() {
+        #expect(LocationUse.photographerNeedsLocation(isAvailable: true, launchMeetup: false))
+        #expect(LocationUse.photographerNeedsLocation(isAvailable: false, launchMeetup: true), "시작 대기 중에는 촬영 가능을 꺼도 만나는 위치 유지")
+        #expect(!LocationUse.photographerNeedsLocation(isAvailable: false, launchMeetup: false), "끄면 모두 멈춘다")
+        #expect(LocationUse.isMeetup(.matched) && LocationUse.isMeetup(.waitingForCustomer) && LocationUse.isMeetup(.waitingForPhotographer))
+        #expect(!LocationUse.isMeetup(.shooting) && !LocationUse.isMeetup(.ended) && !LocationUse.isMeetup(.cancelled), "촬영 시작 뒤에는 만나는 위치 없음")
+    }
+}

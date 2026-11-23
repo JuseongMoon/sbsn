@@ -21,6 +21,7 @@ struct CustomerLaunchTicketView: View {
     @State private var extensionRequest: LaunchMatch.Extension?
     @State private var extensionNotice: String?
     @State private var extensionRequestId = LaunchChatRequestID.make()
+    @Environment(\.scenePhase) private var scenePhase
 
     private var myUid: String { launch.uid ?? "" }
     private var name: String { launch.room(ticket.roomId)?.counterpartName(of: myUid) ?? "작가" }
@@ -42,7 +43,8 @@ struct CustomerLaunchTicketView: View {
                 MeetupMapSheet(participants: participants, otherLabel: name)
             }
         }
-        .task(id: "\(ticket.id):\(ticket.status.rawValue)") { await shareLocationWhileMatched() }
+        // 만나는 위치는 매칭~시작 사이, 앱이 앞에 있을 때만 보낸다(L13·L14).
+        .task(id: "\(ticket.id):\(ticket.status.rawValue):\(scenePhase == .active)") { await shareLocationWhileMatched() }
         .task(id: extensionRequest?.id) { await followExtension() }
     }
 
@@ -218,7 +220,7 @@ struct CustomerLaunchTicketView: View {
     }
 
     private func shareLocationWhileMatched() async {
-        guard ticket.status == .matched, !myUid.isEmpty else {
+        guard ticket.status == .matched, !myUid.isEmpty, scenePhase == .active else {
             sharing = nil
             return
         }

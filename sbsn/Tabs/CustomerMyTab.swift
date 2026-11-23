@@ -194,6 +194,10 @@ struct CustomerDeveloperPage: View {
                     .textSelection(.enabled)
                 LabeledContent("진행 중인 촬영", value: session.activeTicketId ?? "없음")
                     .font(.caption)
+                // 앱이 뒤에 있는 동안 받은 위치 수(L13: 0이어야 한다)
+                LabeledContent("백그라운드에서 받은 위치", value: "\(CustomerLocationReader.backgroundUpdates)회")
+                    .font(.caption)
+                    .accessibilityIdentifier("dev.backgroundLocation")
             }
             Section {
                 Button("익명 계정 재발급", systemImage: "person.badge.plus", role: .destructive) {
