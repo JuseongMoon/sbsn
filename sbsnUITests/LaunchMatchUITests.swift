@@ -311,6 +311,47 @@ final class LaunchMatchUITests: XCTestCase {
         attachScreenshot("L10 알림으로 연 대화방", app: app)
     }
 
+    /// 알림 관문(설계 2.7): 열어 둔 대화방의 채팅은 배너 없음, 같은 eventId는 한 번만, 새 eventId는 다시 배너.
+    /// 셸(scratchpad run_L16.sh)이 "SBSN PUSH <단계> <roomId>"를 보면 그 단계의 알림을 `simctl push`로 보낸다.
+    func test_L16_notificationGate() async throws {
+        let artist = try await admin.createTestAccount(prefix: "artist")
+        let artistToken = try await admin.idToken(email: artist.email, password: artist.password)
+        _ = try await admin.call("saveLaunchProfileV1", idToken: artistToken, data: ["age14Confirmed": true, "nickname": "작가1"])
+        try await admin.setDocument("launchArtistRoles/\(artist.uid)", fields: ["approved": ["booleanValue": true]])
+        let customer = try await admin.createTestAccount(prefix: "customer")
+        let app = customerApp
+        app.launchArguments = ["-SBSNEmulatorHost", host]
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["마이"].waitForExistence(timeout: 30))
+        app.tabBars.buttons["마이"].tap()
+        if app.buttons["my.signOut"].waitForExistence(timeout: 5) { app.buttons["my.signOut"].tap() }
+        XCTAssertTrue(app.buttons["my.signIn"].waitForExistence(timeout: 20))
+        app.buttons["my.signIn"].tap()
+        try signIn(at: app, gate: false, account: customer)
+        let customerToken = try await admin.idToken(email: customer.email, password: customer.password)
+        let (_, opened) = try await admin.call("openLaunchConversationV1", idToken: customerToken, data: ["artistUid": artist.uid])
+        let roomId = try XCTUnwrap((opened["result"] as? [String: Any])?["roomId"] as? String)
+        app.tabBars.buttons["채팅"].tap()
+        let row = app.buttons["chat.row"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 20))
+        row.tap()
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        if springboard.buttons["허용"].waitForExistence(timeout: 5) { springboard.buttons["허용"].tap() }
+        let banner = springboard.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "새 메시지가 왔어요")).firstMatch
+
+        // 1) 그 방을 연 채 그 방 채팅 알림(eventId A) → 배너 없음
+        print("SBSN PUSH A \(roomId)")
+        XCTAssertFalse(banner.waitForExistence(timeout: 12), "열어 둔 방인데 배너가 뜸")
+        // 2) 지도로 나가 같은 eventId A를 다시 → 이미 본 알림이라 배너 없음
+        app.navigationBars.buttons.firstMatch.tap()
+        app.tabBars.buttons["촬영"].tap()
+        print("SBSN PUSH A2 \(roomId)")
+        XCTAssertFalse(banner.waitForExistence(timeout: 12), "같은 eventId인데 배너가 다시 뜸")
+        // 3) 새 eventId B → 배너
+        print("SBSN PUSH B \(roomId)")
+        XCTAssertTrue(banner.waitForExistence(timeout: 30), "새 알림인데 배너가 없음")
+    }
+
     // MARK: - 도우미
 
     /// 지도에서 그 작가 카드를 연다: 단독 핀이면 누르고, 묶음이면 하나씩 눌러 목록에 그 작가가 있으면 고른다.
