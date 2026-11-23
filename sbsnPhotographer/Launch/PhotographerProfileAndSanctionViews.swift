@@ -55,7 +55,9 @@ struct SanctionReviewSheet: View {
                         .lineLimit(3...6)
                         .accessibilityIdentifier("sanction.review.note")
                 } footer: {
-                    Text("영업일 3일 안에 답드려요. 잘못된 제한이면 기록을 지우고 집계를 다시 계산해요.")
+                    // 서버와 같은 코드포인트로 센다(500, LaunchText)
+                    Text("\(LaunchText.length(note))/500 · 영업일 3일 안에 답드려요. 잘못된 제한이면 기록을 지우고 집계를 다시 계산해요.")
+                        .accessibilityIdentifier("sanction.review.count")
                 }
                 if let error { Text(error).foregroundStyle(.red).font(.footnote) }
             }
@@ -65,7 +67,7 @@ struct SanctionReviewSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("취소") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("보내기") { Task { await send() } }
-                        .disabled(isSending || note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(isSending || note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || LaunchText.length(note) > 500)
                         .accessibilityIdentifier("sanction.review.send")
                 }
             }

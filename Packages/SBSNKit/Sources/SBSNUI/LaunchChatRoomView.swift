@@ -79,6 +79,9 @@ public struct LaunchChatRoomView<Top: View, Bottom: View>: View {
             inputBar
         }
         .task(id: roomId) { await listen() }
+        // 이 방을 보는 동안은 이 방 채팅 알림 배너를 숨긴다(설계 2.7)
+        .onAppear { LaunchNotificationGate.openRoomId = roomId }
+        .onDisappear { if LaunchNotificationGate.openRoomId == roomId { LaunchNotificationGate.openRoomId = nil } }
         .onChange(of: photoItem) { _, item in
             guard let item else { return }
             photoItem = nil

@@ -137,6 +137,11 @@ struct PhotographerHomeView: View {
                 session.setAvailable(true, settings: settings)
             }
         }
+        .onChange(of: session.opensAvailabilityChange, initial: true) { _, opens in
+            guard opens else { return }
+            session.opensAvailabilityChange = false
+            if session.isAvailable { showsChange = true }
+        }
         .sheet(isPresented: $showsChange) {
             AvailabilitySheet(mode: .change, initial: session.launchPublisher.settings ?? session.lastAvailabilitySettings) { settings in
                 Task { await session.updateAvailability(settings) }

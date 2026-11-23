@@ -85,7 +85,13 @@ struct ContentView: View {
             case .ticket(_, let roomId), .room(let roomId):
                 launch.chatPath = [roomId]
                 selectedTab = .chat
+            case .gallery(let ticketId):
+                path = [.gallery(ticketId)]
+                selectedTab = .shoot
             }
+        }
+        .onChange(of: session.opensAvailabilityChange) { _, opens in
+            if opens { selectedTab = .shoot }
         }
         .onChange(of: launch.requestedTab) { _, tab in
             guard let tab else { return }

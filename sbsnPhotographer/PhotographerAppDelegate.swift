@@ -52,12 +52,21 @@ final class PhotographerAppDelegate: NSObject, UIApplicationDelegate, UNUserNoti
     /// 앱이 화면에 떠 있을 때도 배너를 띄워 작가가 매칭·채팅·구매를 알 수 있게 한다.
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        [.banner, .list, .sound]
+        if let launch = LaunchNotification(userInfo: notification.request.content.userInfo) {
+            // 같은 알림은 한 번만, 열어 둔 대화방의 채팅은 배너 없이(설계 2.7)
+            return await LaunchNotificationGate.shouldPresent(launch) ? [.banner, .list, .sound] : []
+        }
+        return [.banner, .list, .sound]
     }
 
     /// 배너를 탭하면 그 티켓 화면으로 간다(구매 알림·공개 지연 알림은 그 촬영의 갤러리).
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         let userInfo = response.notification.request.content.userInfo
+        // 끝 시각 30분 전 로컬 알림: 촬영 탭의 [변경] 시트를 연다(동작 단추 [연장]은 나중)
+        if response.notification.request.identifier == LaunchPresencePublisher.endingReminderID {
+            await MainActor.run { PhotographerSession.shared.opensAvailabilityChange = true }
+            return
+        }
         // 출시 알림: 채팅·신청은 대화방(신청 카드), 촬영·연장은 티켓(설계 2.7)
         if let launch = LaunchNotification(userInfo: userInfo) {
             await MainActor.run { PhotographerSession.shared.pendingLaunchDestination = launch.destination }

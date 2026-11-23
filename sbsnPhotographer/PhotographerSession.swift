@@ -57,6 +57,8 @@ final class PhotographerSession {
     private(set) var account: AccountService.Account?
     /// 출시 알림을 눌렀을 때 갈 곳(뿌리 화면이 가져간다)
     var pendingLaunchDestination: LaunchNotification.Destination?
+    /// 끝 시각 알림을 눌렀다: 촬영 탭에서 [변경] 시트를 연다
+    var opensAvailabilityChange = false
     /// 계정 삭제 뒤 한 번 보이는 알림(로그인 관문 위에 띄운다. 다음 실행 때 다시 알리지 않는다)
     var accountNotice: String?
 

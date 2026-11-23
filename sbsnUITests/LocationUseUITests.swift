@@ -106,6 +106,88 @@ final class LocationUseUITests: XCTestCase {
         _ = try await admin.call("updateLaunchShootingV1", idToken: customerToken, data: ["ticketId": ticketId, "action": "end"])
     }
 
+    /// 작가(Android LR4·LR5·LR6과 같은 범위): 끝 시각이 지나 서버가 발행을 거부하면, 로그아웃하면, 계정을 지우면 위치가 꺼진다.
+    func test_L14_locationStopsOnExpiryLogoutDeletion() async throws {
+        let artist = try await admin.createTestAccount(prefix: "artist")
+        let app = photographerApp
+        app.launchArguments = ["-SBSNEmulatorHost", host]
+        app.launch()
+        try signInAtGate(app, account: artist)
+        try await admin.setDocument("launchArtistRoles/\(artist.uid)", fields: ["approved": ["booleanValue": true]])
+
+        // LR4 끝 시각: 서버 문서의 끝 시각을 지난 시각으로 바꾸면 다음 발행(최대 1분)이 거부되고 촬영 가능·위치가 꺼진다.
+        try turnOn(app)
+        let past = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-60))
+        try await admin.patchDocument("launchDevices/\(artist.uid)", fields: ["availabilityEndsAt": ["timestampValue": past]],
+                                      mask: ["availabilityEndsAt"])
+        let toggle = app.switches["photographer.available"].firstMatch
+        XCTAssertTrue(waitUntil(timeout: 90) { toggle.exists && toggle.value as? String == "0" }, "끝 시각이 지나도 촬영 가능이 켜져 있음")
+        let expired = locationUsage(app)
+        print("SBSN 끝 시각 뒤: \(expired)")
+        XCTAssertTrue(expired.contains("꺼짐"), "끝 시각 뒤에도 위치 사용: \(expired)")
+
+        // LR5 로그아웃: 켠 채 로그아웃 → 다시 로그인하면 꺼져 있다.
+        try turnOn(app)
+        app.tabBars.buttons["마이"].tap()
+        app.buttons["my.signOut"].tap()
+        try signInAtGate(app, account: artist)
+        let afterLogout = locationUsage(app)
+        print("SBSN 로그아웃 뒤: \(afterLogout)")
+        XCTAssertTrue(afterLogout.contains("꺼짐"), "로그아웃 뒤에도 위치 사용: \(afterLogout)")
+
+    }
+
+    /// 작가(Android LR6): 촬영 가능을 켠 채 계정을 지우면 → 새 계정으로 들어와도 위치가 꺼져 있다.
+    func test_L15_locationStopsOnAccountDeletion() async throws {
+        let artist = try await admin.createTestAccount(prefix: "artist")
+        let app = photographerApp
+        app.launchArguments = ["-SBSNEmulatorHost", host]
+        app.launch()
+        try signInAtGate(app, account: artist)
+        try await admin.setDocument("launchArtistRoles/\(artist.uid)", fields: ["approved": ["booleanValue": true]])
+        try turnOn(app)
+        app.tabBars.buttons["마이"].tap()
+        // 앞에서 개발 메뉴를 보느라 목록이 아래로 내려가 있을 수 있다. 계정 칸은 맨 위라 아래로 쓸어 올린다.
+        // (작은 제목 막대 뒤에 가려 있어도 isHittable이 참일 수 있어 맨 위까지 무조건 올린다)
+        let delete = app.buttons["my.deleteAccount"]
+        for _ in 0..<3 { app.swipeDown() }
+        sleep(1)
+        delete.tap()
+        let confirm = app.alerts.buttons["계정 삭제"].firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 10), "삭제 확인 창이 없음")
+        confirm.tap()
+        let done = app.buttons["my.deleteAccount.done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 30), "삭제 안내가 없음")
+        done.tap()
+        let other = try await admin.createTestAccount(prefix: "artist")
+        try signInAtGate(app, account: other)
+        let afterDeletion = locationUsage(app)
+        print("SBSN 계정 삭제 뒤: \(afterDeletion)")
+        XCTAssertTrue(afterDeletion.contains("꺼짐"), "계정 삭제 뒤에도 위치 사용: \(afterDeletion)")
+    }
+
+    private func shotNow(_ name: String, _ app: XCUIApplication) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    private func turnOn(_ app: XCUIApplication) throws {
+        app.tabBars.buttons["촬영"].tap()
+        let toggle = app.switches["photographer.available"].firstMatch
+        XCTAssertTrue(toggle.waitForExistence(timeout: 20))
+        if toggle.value as? String != "1" {
+            toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+            XCTAssertTrue(app.buttons["availability.on"].waitForExistence(timeout: 5))
+            app.buttons["availability.on"].tap()
+            dismissPrompts()
+        }
+        XCTAssertTrue(app.staticTexts["home.status"].waitForExistence(timeout: 20), "켜지지 않음")
+        XCTAssertTrue(locationUsage(app).contains("켜짐"))
+        app.tabBars.buttons["촬영"].tap()
+    }
+
     /// 고객: 지도를 연 채 홈으로 나가 위치를 움직인 뒤 돌아오면 백그라운드에서 받은 위치가 0회
     func test_L12_customerNoLocationInBackground() async throws {
         let app = customerApp

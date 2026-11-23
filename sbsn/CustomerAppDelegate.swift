@@ -44,8 +44,9 @@ final class CustomerAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
     /// 시작·취소·종료는 화면이 이미 바뀌므로 알림 목록에만 남긴다. 갤러리 공개는 다른 탭에 있을 수 있어 배너로 띄운다.
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        if LaunchNotification(userInfo: notification.request.content.userInfo) != nil {
-            return [.banner, .list, .sound]
+        if let launch = LaunchNotification(userInfo: notification.request.content.userInfo) {
+            // 같은 알림은 한 번만, 열어 둔 대화방의 채팅은 배너 없이(설계 2.7)
+            return await LaunchNotificationGate.shouldPresent(launch) ? [.banner, .list, .sound] : []
         }
         let push = CustomerPush.notification(from: notification.request.content.userInfo)
         switch push {

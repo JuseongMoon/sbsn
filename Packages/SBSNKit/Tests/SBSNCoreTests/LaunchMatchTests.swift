@@ -186,3 +186,15 @@ struct LocationUseTests {
         #expect(!LocationUse.isMeetup(.shooting) && !LocationUse.isMeetup(.ended) && !LocationUse.isMeetup(.cancelled), "촬영 시작 뒤에는 만나는 위치 없음")
     }
 }
+
+/// 갤러리 알림은 갤러리로, 같은 알림을 가리는 열쇠
+struct LaunchNotificationGalleryTests {
+    @Test func galleryEventsOpenGallery() throws {
+        let published = try #require(LaunchNotification(userInfo: ["event": "gallery_published", "eventId": "g1", "ticketId": "t1"]))
+        #expect(published.destination == .gallery(ticketId: "t1"))
+        let added = try #require(LaunchNotification(userInfo: ["event": "gallery_photos_added", "eventId": "g2", "roomId": "r", "ticketId": "t1"]))
+        #expect(added.destination == .gallery(ticketId: "t1"))
+        #expect(LaunchNotification(userInfo: ["event": "chat_message"]) == nil, "대화방 ID 없는 채팅은 출시 알림이 아니다")
+        #expect(published.dedupeKey == "g1")
+    }
+}

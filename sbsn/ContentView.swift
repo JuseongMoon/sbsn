@@ -128,6 +128,11 @@ struct ContentView: View {
             case .ticket(_, let roomId), .room(let roomId):
                 launch.chatPath = [roomId]
                 selectedTab = .chat
+            case .gallery(let ticketId):
+                // 3단계 갤러리 v2 화면이 들어오기 전에는 내 사진 탭의 그 촬영으로 간다.
+                galleries.remember(ticketId)
+                photosPath = [ticketId]
+                selectedTab = .photos
             }
         }
         .onChange(of: launch.requestedTab) { _, tab in

@@ -373,6 +373,13 @@ struct EmulatorAdmin {
         return body["fields"] as? [String: Any] ?? [:]
     }
 
+    /// 문서의 일부 필드만 바꾼다(updateMask)
+    func patchDocument(_ path: String, fields: [String: Any], mask: [String]) async throws {
+        let query = mask.map { "updateMask.fieldPaths=\($0)" }.joined(separator: "&")
+        let (status, _) = try await request("\(firestore)/\(path)?\(query)", method: "PATCH", bearer: "owner", body: ["fields": fields])
+        guard status == 200 else { throw Failure.badResponse(status, "patch") }
+    }
+
     func setDocument(_ path: String, fields: [String: Any]) async throws {
         let (status, _) = try await request("\(firestore)/\(path)", method: "PATCH", bearer: "owner", body: ["fields": fields])
         guard status == 200 else { throw Failure.badResponse(status, "patch") }

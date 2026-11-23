@@ -15,10 +15,14 @@ public struct LaunchNotification: Sendable, Equatable {
         case room(String)
         /// 그 티켓(진행 중이면 촬영 탭, 끝났으면 대화방으로)
         case ticket(ticketId: String, roomId: String)
+        /// 그 촬영의 갤러리(3단계 `gallery_published`·`gallery_photos_added`·`gallery_favorite_removed`, 고객은 내 사진 탭)
+        case gallery(ticketId: String)
     }
 
     public init?(userInfo: [AnyHashable: Any]) {
-        guard let event = userInfo["event"] as? String, let roomId = userInfo["roomId"] as? String else { return nil }
+        guard let event = userInfo["event"] as? String else { return nil }
+        // 갤러리 알림은 대화방 ID가 없을 수 있다(티켓 ID로 간다).
+        guard let roomId = userInfo["roomId"] as? String ?? (event.hasPrefix("gallery_") ? "" : nil) else { return nil }
         self.event = event
         self.eventId = userInfo["eventId"] as? String ?? ""
         self.roomId = roomId
@@ -29,6 +33,9 @@ public struct LaunchNotification: Sendable, Equatable {
     /// 채팅은 대화방, 신청 이벤트는 신청 카드가 있는 대화방, 촬영·연장은 티켓(계약 "채팅은 대화방, 신청 이벤트는 신청 카드, 촬영·연장은 티켓").
     /// 수락은 티켓이 생겼으므로 티켓으로 간다.
     public var destination: Destination {
+        if event.hasPrefix("gallery_"), let ticketId {
+            return .gallery(ticketId: ticketId)
+        }
         switch event {
         case "match_accepted", "shoot_start_requested", "shoot_ended", "shoot_cancelled", "extension_requested":
             if let ticketId { return .ticket(ticketId: ticketId, roomId: roomId) }
@@ -37,6 +44,9 @@ public struct LaunchNotification: Sendable, Equatable {
             return .room(roomId)
         }
     }
+
+    /// 같은 알림을 두 번 보이지 않게 기억해 두는 열쇠(서버가 수신자·전이마다 안정적으로 만든다)
+    public var dedupeKey: String { eventId.isEmpty ? "\(event):\(roomId):\(requestId ?? ""):\(ticketId ?? "")" : eventId }
 
     /// 시간 민감(5분·60초 안에 답해야 하는) 알림
     public var isTimeSensitive: Bool {
