@@ -166,16 +166,22 @@ public enum LaunchGalleryService {
         guard let customerUid = data["customerUid"] as? String, let photographerUid = data["photographerUid"] as? String,
               let publishedAt = FirestoreCodec.date(data["publishedAt"]), let editableFrom = FirestoreCodec.date(data["editableFrom"]),
               let closesAt = FirestoreCodec.date(data["closesAt"]) else { return nil }
-        return GalleryV2.Gallery(ticketId: id, customerUid: customerUid, photographerUid: photographerUid, publishedAt: publishedAt,
-                                 editableFrom: editableFrom, closesAt: closesAt,
-                                 revision: (data["revision"] as? NSNumber)?.intValue ?? 1,
-                                 orderedPhotoIds: data["orderedPhotoIds"] as? [String] ?? [])
+        var gallery = GalleryV2.Gallery(ticketId: id, customerUid: customerUid, photographerUid: photographerUid, publishedAt: publishedAt,
+                                        editableFrom: editableFrom, closesAt: closesAt,
+                                        revision: (data["revision"] as? NSNumber)?.intValue ?? 1,
+                                        orderedPhotoIds: data["orderedPhotoIds"] as? [String] ?? [])
+        gallery.purchasedCount = (data["purchasedCount"] as? NSNumber)?.intValue
+        gallery.favoritedCount = (data["favoritedCount"] as? NSNumber)?.intValue
+        return gallery
     }
 
     static func item(id: String, data: [String: Any]) -> GalleryV2.Item {
-        GalleryV2.Item(id: id, isPublished: data["status"] as? String == "published",
-                       previewPath: data["previewPath"] as? String, fullresPath: data["fullresPath"] as? String,
-                       fileExpiresAt: FirestoreCodec.date(data["fileExpiresAt"]),
-                       favorited: data["favorited"] as? Bool ?? false, purchasedAt: FirestoreCodec.date(data["purchasedAt"]))
+        var item = GalleryV2.Item(id: id, isPublished: data["status"] as? String == "published",
+                                  previewPath: data["previewPath"] as? String, fullresPath: data["fullresPath"] as? String,
+                                  fileExpiresAt: FirestoreCodec.date(data["fileExpiresAt"]),
+                                  favorited: data["favorited"] as? Bool ?? false, purchasedAt: FirestoreCodec.date(data["purchasedAt"]))
+        // 작가 문서(artistItems)는 구매됨을 불리언으로만 준다(V5)
+        item.purchasedFlag = data["purchased"] as? Bool ?? false
+        return item
     }
 }

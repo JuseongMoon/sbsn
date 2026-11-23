@@ -111,6 +111,7 @@ struct BreakReasonDialog: ViewModifier {
 struct PhotographerRequestCard: View {
     let request: LaunchMatch.Request
     @Environment(PhotographerLaunchModel.self) private var launch
+    @Environment(PhotographerSession.self) private var session
     /// 홈에서는 그 대화방을 연다. 대화방 안에서는 nil(단추를 숨긴다).
     var onOpenRoom: (() -> Void)?
     @State private var choosesDecline = false
@@ -169,6 +170,8 @@ struct PhotographerRequestCard: View {
             // 늦게 누르면 카드가 구독에서 빠지며 사라지므로 결과는 알림 줄로 보인다(총괄 결정).
             error = nil
             switch result.status {
+            // 휴게 중에도 휴게 전에 들어온 신청은 수락할 수 있고, 수락하면 서버가 휴게를 푼다(웹 0d28d4f).
+            case "accepted": session.launchPublisher.clearBreakLocally()
             case "expired": launch.toast = "이미 만료된 신청이에요"
             case "auto_declined": launch.toast = "다른 신청을 이미 수락했어요"
             case "cancelled": launch.toast = "고객이 신청을 취소했어요"

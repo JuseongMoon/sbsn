@@ -25,6 +25,9 @@ public enum GalleryV2 {
         public let closesAt: Date
         public let revision: Int
         public let orderedPhotoIds: [String]
+        /// 작가에게 보이는 개수(V5, 웹 6e677ea). 고객 쪽에서는 쓰지 않는다.
+        public var purchasedCount: Int?
+        public var favoritedCount: Int?
 
         public init(ticketId: String, customerUid: String, photographerUid: String, publishedAt: Date, editableFrom: Date,
                     closesAt: Date, revision: Int, orderedPhotoIds: [String]) {
@@ -48,7 +51,10 @@ public enum GalleryV2 {
         /// 객체 보관 끝(생성 뒤 30일). 지나면 구매 기록은 남고 파일만 없다.
         public let fileExpiresAt: Date?
         public let favorited: Bool
+        /// 고객 문서의 구매 시각(고객 전용)
         public let purchasedAt: Date?
+        /// 작가 문서의 구매됨 표시(V5, 시각·구매자는 고객 전용이라 불리언만 온다)
+        public var purchasedFlag = false
 
         public init(id: String, isPublished: Bool, previewPath: String?, fullresPath: String?, fileExpiresAt: Date?,
                     favorited: Bool, purchasedAt: Date?) {
@@ -61,7 +67,7 @@ public enum GalleryV2 {
             self.purchasedAt = purchasedAt
         }
 
-        public var isPurchased: Bool { purchasedAt != nil }
+        public var isPurchased: Bool { purchasedAt != nil || purchasedFlag }
 
         public func isFileExpired(now: Date) -> Bool { (fileExpiresAt ?? .distantFuture) <= now }
     }

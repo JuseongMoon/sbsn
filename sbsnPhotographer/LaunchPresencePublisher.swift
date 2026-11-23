@@ -63,6 +63,13 @@ final class LaunchPresencePublisher {
         save(settings)
     }
 
+    /// 휴게 중 신청을 수락하면 서버가 휴게를 푼다(웹 0d28d4f). 앱의 설정도 같이 푼다(서버에 다시 보내지 않는다).
+    func clearBreakLocally() {
+        guard var settings, settings.breakReason != nil else { return }
+        settings.breakReason = nil
+        save(settings)
+    }
+
     private func save(_ settings: Settings?) {
         self.settings = settings
         if let settings, let data = try? JSONEncoder().encode(settings) {

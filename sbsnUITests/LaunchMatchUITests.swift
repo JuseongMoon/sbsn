@@ -244,6 +244,21 @@ final class LaunchMatchUITests: XCTestCase {
         let ended = try await admin.document("launchTickets/\(second)")
         XCTAssertEqual(ended?.string("endedByRole"), "photographer")
 
+        // 휴게 전에 들어온 신청은 휴게 중에도 [수락]이 되고, 수락하면 휴게가 풀린다(웹 0d28d4f)
+        let beforeBreak = try await request(15)
+        XCTAssertTrue(app.buttons["request.accept"].firstMatch.waitForExistence(timeout: 20))
+        app.buttons["break.start"].tap()
+        app.buttons["break.reason.meal"].firstMatch.tap()
+        XCTAssertTrue(waitUntil(timeout: 15) { app.staticTexts["home.status"].label.hasPrefix("휴게 중 · 식사") }, "휴게 상태가 아님")
+        XCTAssertTrue(app.buttons["request.accept"].firstMatch.isEnabled, "휴게 중에 휴게 전 신청의 [수락]이 막힘")
+        app.buttons["request.accept"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["ticket.start"].waitForExistence(timeout: 20), "휴게 중 수락 뒤 티켓 화면이 아님")
+        _ = try await admin.call("updateLaunchShootingV1", idToken: customerToken,
+                                 data: ["ticketId": beforeBreak, "action": "cancel", "cancelReason": "other"])
+        XCTAssertTrue(app.staticTexts["home.status"].waitForExistence(timeout: 20))
+        XCTAssertTrue(waitUntil(timeout: 10) { app.staticTexts["home.status"].label.hasPrefix("촬영 가능") },
+                      "수락 뒤에도 휴게 표시가 남음: \(app.staticTexts["home.status"].label)")
+
         // 휴게 → 신청 거부 → 휴게 끝
         app.buttons["break.start"].tap()
         app.buttons["break.reason.meal"].firstMatch.tap()

@@ -163,6 +163,17 @@ final class LaunchMatchServiceTests: XCTestCase {
         let mutual = try await self.first(LaunchMatchService.ticket(id: mutualTicket)) { $0?.cancellationResponse == "agreed" }
         XCTAssertEqual(mutual?.cancellationReason, .mutual)
 
+        // 휴게 전에 들어온 신청은 휴게 중에도 수락할 수 있고, 수락하면 서버가 휴게를 푼다(웹 0d28d4f).
+        let beforeBreak = try await customerRequest(15)
+        try await LaunchArtistService.setAvailability(deviceSessionId: deviceSessionId, radiusMeters: 1000,
+                                                      endsAt: Date().addingTimeInterval(7200), breakReason: .rest)
+        let breakAccepted = try await LaunchMatchService.respond(requestId: beforeBreak, .accept)
+        XCTAssertEqual(breakAccepted.status, "accepted", "휴게 전 신청을 휴게 중에 수락하지 못함")
+        let device = try await rest.document("launchDevices/\(artist.uid)")
+        XCTAssertNil(device?["breakReason"].flatMap { ($0 as? [String: Any])?["stringValue"] }, "수락 뒤에도 휴게가 남음")
+        let breakTicket = try XCTUnwrap(breakAccepted.ticketId)
+        _ = try await rest.call("updateLaunchShootingV1", token: customerToken, ["ticketId": breakTicket, "action": "cancel", "cancelReason": "other"])
+
         // 휴게 중에는 새 신청을 받지 않는다(W5).
         try await LaunchArtistService.setAvailability(deviceSessionId: deviceSessionId, radiusMeters: 1000,
                                                       endsAt: Date().addingTimeInterval(7200), breakReason: .meal)
@@ -310,6 +321,8 @@ final class LaunchMatchServiceTests: XCTestCase {
         XCTAssertEqual(GalleryV2.ordered(artistItems, by: gallery).map(\.id), photoIds)
 
         try await LaunchArtistService.setAvailability(false, deviceSessionId: deviceSessionId)
+        XCTAssertEqual(gallery.purchasedCount, 0, "작가용 구매 개수(V5)")
+        XCTAssertTrue(artistItems.allSatisfy { !$0.isPurchased && !$0.favorited })
 
         // 고객(앱 코드): 공개 목록 → 찜 → 구매 기록(시험판) → 고화질 받기
         _ = try await AccountService.signInForTesting(email: customer.email, password: customer.password)
@@ -338,7 +351,16 @@ final class LaunchMatchServiceTests: XCTestCase {
             try await LaunchGalleryService.downloadFullres(path: notBought, to: FileManager.default.temporaryDirectory.appendingPathComponent("x.jpg"))
             XCTFail("사지 않은 고화질본을 받음")
         } catch {}
-        print("SBSN 갤러리 통과: 티켓 \(ticketId.prefix(6)) 10장 공개·구매 2장·고화질 \(size)B")
+        // 작가에게는 사진별 구매됨·찜됨과 개수만 보인다(V5)
+        _ = try await AccountService.signInForTesting(email: artist.email, password: artist.password)
+        let marked = try await first(LaunchGalleryService.items(ticketId: ticketId, role: .photographer)) {
+            $0.first { $0.id == ids[0] }?.isPurchased == true && $0.first { $0.id == ids[1] }?.favorited == true
+        }
+        XCTAssertNil(marked.first { $0.id == ids[0] }?.purchasedAt, "구매 시각은 고객 전용")
+        let counted = try await first(LaunchGalleryService.gallery(ticketId: ticketId)) { $0?.purchasedCount == 2 }
+        XCTAssertEqual(counted?.favoritedCount, 1)
+        XCTAssertFalse(GalleryV2.canRemove(try XCTUnwrap(marked.first { $0.id == ids[0] }), currentCount: 10 + 5), "구매된 사진은 삭제 단추를 끈다")
+        print("SBSN 갤러리 통과: 티켓 \(ticketId.prefix(6)) 10장 공개·구매 2장·고화질 \(size)B·작가 표시 구매 2·찜 1")
     }
 
     /// 시험용 sRGB JPEG(방향 1) 파일
@@ -467,6 +489,15 @@ struct LaunchREST {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await URLSession.shared.data(for: request)
         return ((response as? HTTPURLResponse)?.statusCode ?? 0, (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] ?? [])
+    }
+
+    /// 문서 필드(관리자 REST). 없으면 nil
+    func document(_ path: String) async throws -> [String: Any]? {
+        var request = URLRequest(url: URL(string: "http://\(host):18080/v1/projects/\(project)/databases/(default)/documents/\(path)")!)
+        request.setValue("Bearer owner", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        return ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["fields"] as? [String: Any]
     }
 
     /// callable을 HTTP로 부른다. 결과의 `result`(실패면 `error`)를 돌려준다.
