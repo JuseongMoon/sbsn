@@ -210,6 +210,8 @@ public enum LaunchMatch {
         /// 상호 취소 요청에 대한 상대 응답(`pending`·`agreed`·`declined`)
         public let cancellationResponse: String?
         public let cancellationResponseExpiresAt: Date?
+        /// 첫 공개 기한(서버가 촬영 종료 때 쓴다, 3단계 V2)
+        public var firstPublishUntil: Date?
 
         public init(id: String, roomId: String, customerUid: String, photographerUid: String, minutes: Int, status: TicketStatus,
                     matchedAt: Date?, customerConfirmedAt: Date?, photographerConfirmedAt: Date?, startedAt: Date?,

@@ -307,7 +307,7 @@ public enum LaunchMatchService {
               let photographerUid = data["photographerUid"] as? String,
               let status = LaunchMatch.TicketStatus(rawValue: data["status"] as? String ?? "") else { return nil }
         func role(_ key: String) -> LaunchMatch.Role? { (data[key] as? String).flatMap(LaunchMatch.Role.init(rawValue:)) }
-        return LaunchMatch.Ticket(
+        var ticket = LaunchMatch.Ticket(
             id: id, roomId: roomId, customerUid: customerUid, photographerUid: photographerUid,
             minutes: (data["minutes"] as? NSNumber)?.intValue ?? 0, status: status,
             matchedAt: FirestoreCodec.date(data["matchedAt"]),
@@ -321,6 +321,8 @@ public enum LaunchMatchService {
             cancellationReason: (data["cancellationReason"] as? String).flatMap(LaunchMatch.CancelReason.init(rawValue:)),
             cancellationResponse: data["cancellationResponse"] as? String,
             cancellationResponseExpiresAt: FirestoreCodec.date(data["cancellationResponseExpiresAt"]))
+        ticket.firstPublishUntil = FirestoreCodec.date(data["firstPublishUntil"])
+        return ticket
     }
 
     nonisolated(unsafe) static let rfc3339Formatter: ISO8601DateFormatter = {

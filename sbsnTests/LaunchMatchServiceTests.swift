@@ -234,6 +234,129 @@ final class LaunchMatchServiceTests: XCTestCase {
         print("SBSN 프로필·제재 통과: 사진 \(photo.count)B")
     }
 
+    /// 3단계 갤러리 v2(웹 launch-phase-3.md): 촬영 종료 → 사진 10장 준비·업로드·확정 → 9장 공개 거부 → 10장 공개 →
+    /// 잠금 중 편집 거부·버전 경합 → 작가 목록 10장 → 고객 찜·구매 기록 → 산 사진 고화질 받기, 사지 않은 사진은 거부
+    func test_galleryPublishAndPurchase() async throws {
+        // 작가(앱 코드)로 끝난 촬영을 만든다.
+        let artist = try await rest.createAccount(prefix: "artist")
+        _ = try await AccountService.signInForTesting(email: artist.email, password: artist.password)
+        _ = try await AccountService.saveProfile(age14Confirmed: true, nickname: "작가1")
+        try await rest.approve(artistUid: artist.uid)
+        let deviceSessionId = UUID().uuidString.lowercased()
+        try await LaunchArtistService.setAvailability(deviceSessionId: deviceSessionId, radiusMeters: 1000,
+                                                      endsAt: Date().addingTimeInterval(7200), breakReason: nil)
+        let customer = try await rest.createAccount(prefix: "customer")
+        let customerToken = try await rest.idToken(customer)
+        _ = try await rest.call("saveLaunchProfileV1", token: customerToken, ["age14Confirmed": true, "nickname": "고객1"])
+        let (_, room) = try await rest.call("openLaunchConversationV1", token: customerToken, ["artistUid": artist.uid])
+        let roomId = try XCTUnwrap(room["roomId"] as? String)
+        let (_, requested) = try await rest.call("requestLaunchMatchV1", token: customerToken,
+                                                 ["roomId": roomId, "minutes": 10, "clientRequestId": Self.newId()])
+        let requestId = try XCTUnwrap(requested["requestId"] as? String)
+        let accepted = try await LaunchMatchService.respond(requestId: requestId, .accept)
+        let ticketId = try XCTUnwrap(accepted.ticketId)
+        _ = try await rest.call("updateLaunchShootingV1", token: customerToken, ["ticketId": ticketId, "action": "start"])
+        try await LaunchMatchService.updateShooting(ticketId: ticketId, .start)
+        try await LaunchMatchService.updateShooting(ticketId: ticketId, .end)
+        let ended = try await first(LaunchGalleryService.endedTickets(photographerUid: artist.uid)) { $0.contains { $0.id == ticketId } }
+        let deadline = try XCTUnwrap(ended.first { $0.id == ticketId }?.firstPublishUntil, "firstPublishUntil이 없음(V2)")
+        XCTAssertGreaterThan(deadline.timeIntervalSinceNow, 71 * 3600)
+
+        // 사진 10장: 준비 → 고화질·미리보기 업로드 → 확정
+        var photoIds: [String] = []
+        for index in 0..<10 {
+            let prepared = try await LaunchGalleryService.prepare(ticketId: ticketId, clientRequestId: Self.newId())
+            let fullres = try Self.jpegFile(width: 1600, height: 1067, hue: CGFloat(index) / 10)
+            let preview = try Self.jpegFile(width: 640, height: 427, hue: CGFloat(index) / 10)
+            try await LaunchGalleryService.upload(fileURL: fullres, to: prepared.fullresPath)
+            try await LaunchGalleryService.upload(fileURL: preview, to: prepared.previewPath)
+            let result = try await LaunchGalleryService.finalize(ticketId: ticketId, photoId: prepared.photoId)
+            XCTAssertEqual(result, .ready, "사진 \(index) 확정 실패")
+            photoIds.append(prepared.photoId)
+        }
+
+        let ids = photoIds
+        // 9장은 공개할 수 없다.
+        do {
+            _ = try await LaunchGalleryService.publish(ticketId: ticketId, orderedPhotoIds: Array(photoIds.prefix(9)), clientRequestId: Self.newId())
+            XCTFail("9장 공개가 받아들여짐")
+        } catch let failure as LaunchMatchService.Failure {
+            print("SBSN 9장 거부: \(failure.reason ?? "-") \(failure.localizedDescription)")
+        }
+        let published = try await LaunchGalleryService.publish(ticketId: ticketId, orderedPhotoIds: photoIds, clientRequestId: Self.newId())
+        XCTAssertEqual(published.revision, 1)
+        let galleryValue = try await first(LaunchGalleryService.gallery(ticketId: ticketId)) { $0 != nil }
+        let gallery = try XCTUnwrap(galleryValue)
+        XCTAssertEqual(gallery.orderedPhotoIds, photoIds)
+        XCTAssertEqual(gallery.editableFrom.timeIntervalSince(gallery.publishedAt), 24 * 3600, accuracy: 1)
+        XCTAssertEqual(gallery.closesAt.timeIntervalSince(gallery.publishedAt), 168 * 3600, accuracy: 1)
+
+        // 잠금 중 편집은 거부, 버전이 다르면 버전 경합
+        do {
+            try await LaunchGalleryService.edit(ticketId: ticketId, expectedRevision: 99, orderedPhotoIds: photoIds, clientRequestId: Self.newId())
+            XCTFail("다른 버전 편집이 받아들여짐")
+        } catch let failure as LaunchMatchService.Failure {
+            XCTAssertEqual(failure.reason, "GALLERY_REVISION_CONFLICT")
+        }
+        do {
+            try await LaunchGalleryService.edit(ticketId: ticketId, expectedRevision: 1, orderedPhotoIds: Array(photoIds.reversed()),
+                                                clientRequestId: Self.newId())
+            XCTFail("잠금 중 편집이 받아들여짐")
+        } catch let failure as LaunchMatchService.Failure {
+            print("SBSN 잠금 중 편집 거부: \(failure.reason ?? "-")")
+            XCTAssertNotNil(failure.reason)
+        }
+        let artistItems = try await first(LaunchGalleryService.items(ticketId: ticketId, role: .photographer)) { $0.count == 10 }
+        XCTAssertEqual(GalleryV2.ordered(artistItems, by: gallery).map(\.id), photoIds)
+
+        try await LaunchArtistService.setAvailability(false, deviceSessionId: deviceSessionId)
+
+        // 고객(앱 코드): 공개 목록 → 찜 → 구매 기록(시험판) → 고화질 받기
+        _ = try await AccountService.signInForTesting(email: customer.email, password: customer.password)
+        let items = try await first(LaunchGalleryService.items(ticketId: ticketId, role: .customer)) { $0.count == 10 }
+        let ordered = GalleryV2.ordered(items, by: gallery)
+        XCTAssertEqual(ordered.map(\.id), photoIds)
+        let previewPath = try XCTUnwrap(ordered[0].previewPath)
+        let previewBytes = try await LaunchGalleryService.previewData(path: previewPath)
+        XCTAssertFalse(previewBytes.isEmpty)
+        let favorited = try await LaunchGalleryService.setFavorite(ticketId: ticketId, photoId: photoIds[1], favorited: true)
+        XCTAssertTrue(favorited)
+        _ = try await first(LaunchGalleryService.items(ticketId: ticketId, role: .customer)) { $0.first { $0.id == ids[1] }?.favorited == true }
+        let purchase = try await LaunchGalleryService.recordPurchase(ticketId: ticketId, photoIds: [photoIds[0], photoIds[1]], clientRequestId: Self.newId())
+        XCTAssertEqual(purchase[photoIds[0]], .granted)
+        XCTAssertEqual(purchase[photoIds[1]], .granted)
+        let bought = try await first(LaunchGalleryService.items(ticketId: ticketId, role: .customer)) { $0.first { $0.id == ids[0] }?.isPurchased == true }
+        let fullresPath = try XCTUnwrap(bought.first { $0.id == photoIds[0] }?.fullresPath)
+        let saved = FileManager.default.temporaryDirectory.appendingPathComponent("\(photoIds[0]).jpg")
+        try? FileManager.default.removeItem(at: saved)
+        try await LaunchGalleryService.downloadFullres(path: fullresPath, to: saved)
+        let size = try XCTUnwrap(try FileManager.default.attributesOfItem(atPath: saved.path)[.size] as? Int)
+        XCTAssertGreaterThan(size, 0)
+        // 사지 않은 사진의 고화질본은 읽을 수 없다.
+        let notBought = try XCTUnwrap(bought.first { $0.id == photoIds[2] }?.fullresPath)
+        do {
+            try await LaunchGalleryService.downloadFullres(path: notBought, to: FileManager.default.temporaryDirectory.appendingPathComponent("x.jpg"))
+            XCTFail("사지 않은 고화질본을 받음")
+        } catch {}
+        print("SBSN 갤러리 통과: 티켓 \(ticketId.prefix(6)) 10장 공개·구매 2장·고화질 \(size)B")
+    }
+
+    /// 시험용 sRGB JPEG(방향 1) 파일
+    static func jpegFile(width: Int, height: Int, hue: CGFloat) throws -> URL {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.preferredRange = .standard
+        let image = UIGraphicsImageRenderer(size: CGSize(width: width, height: height), format: format).image { context in
+            UIColor(hue: hue, saturation: 0.6, brightness: 0.9, alpha: 1).setFill()
+            context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            UIColor.white.setFill()
+            context.fill(CGRect(x: width / 4, y: height / 4, width: width / 2, height: height / 2))
+        }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).jpg")
+        try XCTUnwrap(image.jpegData(compressionQuality: 0.85)).write(to: url)
+        return url
+    }
+
     // MARK: - 도우미
 
     static func newId() -> String { UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased() }
