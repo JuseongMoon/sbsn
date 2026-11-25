@@ -55,6 +55,12 @@ public enum GalleryV2 {
         public let purchasedAt: Date?
         /// 작가 문서의 구매됨 표시(V5, 시각·구매자는 고객 전용이라 불리언만 온다)
         public var purchasedFlag = false
+        /// 보정본(v2, 고객 전용, 웹 retouch-delivery-preview.md). 경로가 있으면 v1과 같은 방식으로 받아 사진 앱에 저장한다.
+        public var retouchPath: String?
+        public var retouchGeneration: String?
+        public var retouchDeliveredAt: Date?
+
+        public var hasRetouch: Bool { retouchPath != nil }
 
         public init(id: String, isPublished: Bool, previewPath: String?, fullresPath: String?, fileExpiresAt: Date?,
                     favorited: Bool, purchasedAt: Date?) {
@@ -178,5 +184,9 @@ public enum GalleryV2 {
         public static let removeFavoritedConfirm = "고객이 찜한 사진이에요. 지우면 고객에게 알려요"
         public static let revisionConflict = "다른 곳에서 먼저 바꿨어요. 최신 목록을 불러왔어요"
         public static let fileExpired = "파일 보관 기간이 지났어요"
+        /// 보정본이 회수(결제 취소)됐거나 보관이 끝나 Storage가 거부할 때. 다시 시도하게 두지 않는다(총괄 결정).
+        public static let retouchUnavailable = "이 보정본은 더 받을 수 없어요. 결제가 취소됐거나 보관 기간이 지났어요"
+        public static let retouchSaved = "보정본을 사진 앱에 저장했어요"
+        public static let retouchButton = "보정본 저장"
     }
 }

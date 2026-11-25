@@ -155,9 +155,15 @@ public enum LaunchGalleryService {
         try await Storage.storage().reference(withPath: path).data(maxSize: 2 * 1024 * 1024)
     }
 
-    /// 산 사진 고화질본을 파일로 받는다(50 MiB 미만, 메타데이터 그대로 D037)
+    /// 산 사진 고화질본(v1)이나 보정본(v2, `retouchPath`)을 파일로 받는다(50 MiB 미만, 메타데이터 그대로 D037)
     public static func downloadFullres(path: String, to fileURL: URL) async throws {
         _ = try await Storage.storage().reference(withPath: path).writeAsync(toFile: fileURL)
+    }
+
+    /// Storage가 거부했는지(보정본 회수·보관 만료). 이때는 다시 시도하게 두지 않는다.
+    public static func isAccessDenied(_ error: Error) -> Bool {
+        let code = StorageErrorCode(rawValue: (error as NSError).code)
+        return code == .unauthorized || code == .objectNotFound
     }
 
     // MARK: - 변환
@@ -182,6 +188,10 @@ public enum LaunchGalleryService {
                                   favorited: data["favorited"] as? Bool ?? false, purchasedAt: FirestoreCodec.date(data["purchasedAt"]))
         // 작가 문서(artistItems)는 구매됨을 불리언으로만 준다(V5)
         item.purchasedFlag = data["purchased"] as? Bool ?? false
+        // 보정본(v2): 서버가 기록한 경로·세대만 쓴다(앱에서 경로를 만들지 않는다)
+        item.retouchPath = data["retouchPath"] as? String
+        item.retouchGeneration = (data["retouchGeneration"] as? String) ?? (data["retouchGeneration"] as? NSNumber)?.stringValue
+        item.retouchDeliveredAt = FirestoreCodec.date(data["retouchDeliveredAt"])
         return item
     }
 }

@@ -8,6 +8,8 @@ public struct LaunchNotification: Sendable, Equatable {
     public let roomId: String
     public let requestId: String?
     public let ticketId: String?
+    /// 보정본 알림(`retouch_delivered`)의 사진
+    public let photoId: String?
 
     /// 누르면 갈 곳
     public enum Destination: Sendable, Equatable {
@@ -17,6 +19,8 @@ public struct LaunchNotification: Sendable, Equatable {
         case ticket(ticketId: String, roomId: String)
         /// 그 촬영의 갤러리(3단계 `gallery_published`·`gallery_photos_added`·`gallery_favorite_removed`, 고객은 내 사진 탭)
         case gallery(ticketId: String)
+        /// 그 갤러리의 그 사진(보정본 전달 `retouch_delivered`)
+        case galleryPhoto(ticketId: String, photoId: String)
     }
 
     public init?(userInfo: [AnyHashable: Any]) {
@@ -28,11 +32,16 @@ public struct LaunchNotification: Sendable, Equatable {
         self.roomId = roomId
         self.requestId = userInfo["requestId"] as? String
         self.ticketId = userInfo["ticketId"] as? String
+        self.photoId = userInfo["photoId"] as? String
     }
 
     /// 채팅은 대화방, 신청 이벤트는 신청 카드가 있는 대화방, 촬영·연장은 티켓(계약 "채팅은 대화방, 신청 이벤트는 신청 카드, 촬영·연장은 티켓").
     /// 수락은 티켓이 생겼으므로 티켓으로 간다.
     public var destination: Destination {
+        if event == "retouch_delivered", let ticketId {
+            if let photoId { return .galleryPhoto(ticketId: ticketId, photoId: photoId) }
+            return .gallery(ticketId: ticketId)
+        }
         if event.hasPrefix("gallery_"), let ticketId {
             return .gallery(ticketId: ticketId)
         }

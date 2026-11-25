@@ -85,7 +85,7 @@ struct ContentView: View {
             case .ticket(_, let roomId), .room(let roomId):
                 launch.chatPath = [roomId]
                 selectedTab = .chat
-            case .gallery(let ticketId):
+            case .gallery(let ticketId), .galleryPhoto(let ticketId, _):
                 path = [.gallery(ticketId)]
                 selectedTab = .shoot
             }

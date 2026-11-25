@@ -198,3 +198,14 @@ struct LaunchNotificationGalleryTests {
         #expect(published.dedupeKey == "g1")
     }
 }
+
+/// 보정본 전달 알림은 그 사진으로(웹 retouch-delivery-preview.md)
+struct RetouchNotificationTests {
+    @Test func retouchDeliveredOpensPhoto() throws {
+        let info: [AnyHashable: Any] = ["event": "retouch_delivered", "eventId": "r1", "roomId": "room", "orderId": "o",
+                                        "ticketId": "t1", "photoId": "p1", "deliveredAt": "2026-11-25T01:00:00Z"]
+        let notification = try #require(LaunchNotification(userInfo: info))
+        #expect(notification.destination == .galleryPhoto(ticketId: "t1", photoId: "p1"))
+        #expect(notification.dedupeKey == "r1")
+    }
+}

@@ -128,7 +128,8 @@ struct ContentView: View {
             case .ticket(_, let roomId), .room(let roomId):
                 launch.chatPath = [roomId]
                 selectedTab = .chat
-            case .gallery(let ticketId):
+            case .gallery(let ticketId), .galleryPhoto(let ticketId, _):
+                // 보정본 알림(galleryPhoto)은 3단계 고객 갤러리 화면에서 그 사진을 바로 연다(지금은 그 촬영까지).
                 // 3단계 갤러리 v2 화면이 들어오기 전에는 내 사진 탭의 그 촬영으로 간다.
                 galleries.remember(ticketId)
                 photosPath = [ticketId]
